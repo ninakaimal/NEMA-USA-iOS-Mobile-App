@@ -1,7 +1,6 @@
 //
-//  UserProfile.swift
+//  MasterDataModel.swift
 //  NEMA USA
-//
 //  Created by Arjun on 4/15/25.
 //
 import Foundation

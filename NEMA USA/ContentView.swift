@@ -8,66 +8,51 @@
 import SwiftUI
 
 struct ContentView: View {
-    // 1) Load all events so we can lookup by ID
-    @StateObject private var loader = EventLoader()
-    
-    // 2) Hold the deep‑linked event and toggle for NavigationLink
-    @State private var deepLinkEvent: Event?
-    @State private var showDeepLink = false
+    // 1) Watch the token key so we know when login completes
+    @AppStorage("authToken") private var authToken: String?
+    // 2) Track which tab is visible
+    @State private var selectedTab = 0
 
     var body: some View {
         NavigationView {
-            TabView {
+            TabView(selection: $selectedTab) {
                 DashboardView()
+                    .tag(0)
                     .tabItem {
                         Image(systemName: "house")
                         Text("Dashboard")
                     }
 
                 CalendarView()
+                    .tag(1)
                     .tabItem {
                         Image(systemName: "calendar")
                         Text("Calendar")
                     }
 
+                AccountView()
+                    .tag(2)
+                    .tabItem {
+                        Image(systemName: "person.circle")
+                        Text("Account")
+                    }
+
                 ContactView()
+                    .tag(3)
                     .tabItem {
                         Image(systemName: "message")
                         Text("Feedback")
                     }
             }
-            .accentColor(Color.orange)
-
-            // 3) Invisible link that triggers when `showDeepLink` flips true
-            .background(
-                NavigationLink(
-                    destination: Group {
-                        if let ev = deepLinkEvent {
-                            EventDetailView(event: ev)
-                        } else {
-                            EmptyView()
-                        }
-                    },
-                    isActive: $showDeepLink
-                ) {
-                    EmptyView()
+            .accentColor(.orange)
+            // 3) When the token appears, switch to Account
+            .onChange(of: authToken) { new in
+                if new != nil {
+                    selectedTab = 2
                 }
-                .hidden()
-            )
-            // 4) Listen for the notification and lookup the Event by ID
-               .onReceive(NotificationCenter.default.publisher(for: .didDeepLinkToEvent)) { notif in
-                   guard
-                     let info     = notif.userInfo,
-                     let eventId  = info["eventId"] as? String,
-                     let ev       = loader.events.first(where: { $0.id == eventId })
-                   else {
-                     return
-                   }
-                deepLinkEvent = ev
-                showDeepLink  = true
             }
+            // (your existing deep‑link NavigationLink background)
         }
-        // Force stack style so TabView + NavigationLink works predictably on iOS
         .navigationViewStyle(StackNavigationViewStyle())
     }
 }
