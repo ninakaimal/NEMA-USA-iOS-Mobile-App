@@ -1,0 +1,103 @@
+[
+  {
+    "id": "1",
+    "title": "NEMA Picnic 2025",
+    "description": "NEMA's annual summer picnic.",
+    "location": "To be announced",
+    "category": "Social",
+    "date": "To be announced",
+    "imageUrl": "Picnic2025.png",
+    "isTBD": true
+  },
+  {
+    "id": "2",
+    "title": "Onam Celebration 2025",
+    "description": "A celebration of the traditional harvest festival of Kerala.",
+    "location": "To be announced",
+    "category": "Festivals",
+    "date": "To be announced",
+    "imageUrl": "Onam2025.png",
+    "isTBD": true
+  },
+  {
+    "id": "3",
+    "title": "NEMA Cricket Tournament 2025",
+    "description": "The tournament will be held on June 14, 15, 21, and 22.",
+    "location": "Col John Robinson School, Westford, MA",
+    "category": "Sports",
+    "date": "2025-06-14T00:00:00Z",
+    "imageUrl": "Cricket2025.png",
+    "isTBD": false
+  },
+  {
+    "id": "4",
+    "title": "Ruchimela Festival 2025",
+    "description": "The most awaited food festival of the year, calling all home chefs and culinary experts.",
+    "location": "Hudson Elks Lodge, 91 Park St, Hudson, MA 01749",
+    "category": "Food",
+    "date": "2025-05-31T11:00:00Z",
+    "imageUrl": "Ruchimelam2025",
+    "isTBD": false
+  },
+  {
+    "id": "5",
+    "title": "Drishya Day 5 - Grand Finale Group Dances",
+    "description": "Grand finale featuring classical and non-classical group dance performances.",
+    "location": "Marlborough Middle School, 25 Union St, Marlborough, MA 01752",
+    "category": "Dance",
+    "date": "2025-04-26T16:00:00Z",
+    "imageUrl": "DrishyaDay5.png",
+    "isTBD": false
+  },
+  {
+    "id": "6",
+    "title": "Drishya Day 4 - Western & Indian Non-Classical Singing",
+    "description": "Western and Indian Non-Classical Singing competition for various age groups.",
+    "location": "Sam Placentino Elementary School, 235 Woodland St, Holliston, MA 01746",
+    "category": "Singing",
+    "date": "2025-04-05T00:00:00Z",
+    "imageUrl": "DrishyaDay4.png",
+    "isTBD": false
+  },
+  {
+    "id": "7",
+    "title": "Drishya Day 3 - Classical Solo Singing",
+    "description": "Classical Solo Singing competition featuring various age groups.",
+    "location": "VFW Ashland, 311 Pleasant St, Ashland, MA 01721",
+    "category": "Singing",
+    "date": "2025-03-29T00:00:00Z",
+    "imageUrl": "DrishyaDay3.png",
+    "isTBD": false
+  },
+  {
+    "id": "8",
+    "title": "Drishya Day 2 - Classical Solo Dance",
+    "description": "Classical Solo Dance performances across various age groups.",
+    "location": "Wayland Middle School, 201 Main St, Wayland, MA 01778",
+    "category": "Dance",
+    "date": "2025-03-22T00:00:00Z",
+    "imageUrl": "DrishyaDay2.png",
+    "isTBD": false
+  },
+  {
+    "id": "9",
+    "title": "Drishya Day 1 - Arts Competitions",
+    "description": "Competitions in Drawing, Poetry, Short Story, Essay Writing, Malayalam Elocution, English Elocution, Quiz, and Art From The Heart.",
+    "location": "Wayland Middle School",
+    "category": "Literary & Arts",
+    "date": "2025-03-15T00:00:00Z",
+    "imageUrl": "DrishyaDay1.png",
+    "isTBD": false
+  },
+  {
+    "id": "10",
+    "title": "NEMA Badminton Tournament 2025",
+    "description": "Badminton tournament with prize money, featuring matches across various skill levels.",
+    "location": "Wayside Athletic Club",
+    "category": "Sports",
+    "date": "2025-02-08T00:00:00Z",
+    "imageUrl": "Badminton2025",
+    "isTBD": false
+  }
+]
+
