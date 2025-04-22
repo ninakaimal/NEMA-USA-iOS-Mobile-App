@@ -7,29 +7,41 @@
 
 import SwiftUI
 
-// MARK: – FamilyMember model
-struct FamilyMember: Identifiable, Codable {
-    let id: Int
-    let name: String
-    let relationship: String
-    let email: String?
-    let dob: String?
-    let phone: String?
-}
-
 struct AccountView: View {
     @AppStorage("authToken") private var authToken: String?
     @State private var profile:      UserProfile?
     @State private var family:       [FamilyMember] = []
     @State private var isLoadingFam: Bool           = false
+    @State private var showLogoutConfirmation = false
 
     var body: some View {
         NavigationView {
             content
+                .navigationBarTitle("My Account", displayMode: .inline)
+                .navigationBarItems(
+                    trailing:
+                        // only show Logout if we actually have a token
+                        Group {
+                            if authToken != nil {
+                                Button("Logout") {
+                                    showLogoutConfirmation = true
+                                }
+                                .foregroundColor(.white)
+                            }
+                        }
+                )
+                .alert(isPresented: $showLogoutConfirmation) {
+                    Alert(
+                        title: Text("Logout"),
+                        message: Text("Are you sure you want to log out?"),
+                        primaryButton: .destructive(Text("Logout")) {
+                            DatabaseManager.shared.clearSession()
+                            authToken = nil
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
         }
-//        .navigationBarHidden(false)
-        //  .navigationTitle("My Account")
-        .navigationBarTitle("My Account", displayMode: .inline)
         .accentColor(.primary)
         .onAppear { loadAllData() }
         .onChange(of: authToken) { _ in loadAllData() }
@@ -44,17 +56,13 @@ struct AccountView: View {
         }
     }
 
-    /// Scrollable profile + family, with top orange band
     private var profileScroll: some View {
         ZStack(alignment: .top) {
-            // orange background behind the nav‑bar
             Color.orange
                 .ignoresSafeArea(edges: .top)
                 .frame(height: 56)
 
-            // main white content
             Color(.systemBackground)
-               // .ignoresSafeArea(edges: .bottom)
                 .ignoresSafeArea(edges: [.bottom, .horizontal])
 
             ScrollView {
@@ -68,7 +76,6 @@ struct AccountView: View {
         }
     }
 
-    /// Main profile card
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 16) {
@@ -109,7 +116,6 @@ struct AccountView: View {
         .padding(.horizontal)
     }
 
-    /// “Your Family” list
     private var familySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Your Family")
@@ -152,11 +158,15 @@ struct AccountView: View {
     }
 
     private func loadLocalProfile() {
+        // Show any cached data immediately
         if let cached = DatabaseManager.shared.currentUser {
             profile = cached
         }
-        guard let token = authToken else { return }
-        NetworkManager.shared.fetchProfile(token: token) { result in
+        // Bail out if we don’t have a token yet
+        guard authToken != nil else { return }
+
+        // 📡 Fetch fresh profile
+        NetworkManager.shared.fetchProfile { result in
             switch result {
             case .success(let fresh):
                 DatabaseManager.shared.saveUser(fresh)
@@ -190,6 +200,7 @@ struct AccountView: View {
 }
 
 // MARK: – Reusable InfoRow
+
 private struct InfoRow: View {
     let label   : String
     let value   : String
@@ -213,3 +224,4 @@ private extension Text {
         flag ? self.italic() : self
     }
 }
+

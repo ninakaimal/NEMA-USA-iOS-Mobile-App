@@ -44,12 +44,7 @@ struct ContentView: View {
                     }
             }
             .accentColor(.orange)
-            // 3) When the token appears, switch to Account
-            .onChange(of: authToken) { new in
-                if new != nil {
-                    selectedTab = 2
-                }
-            }
+
             // (your existing deep‑link NavigationLink background)
         }
         .navigationViewStyle(StackNavigationViewStyle())

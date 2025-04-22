@@ -1,33 +1,41 @@
-//
-//  DatabaseManager.swift
-//  NEMA USA
-//  Created by Nina on 4/16/25.
-//  Updated by Sajith on 4/21/25
-//
+// DatabaseManager.swift
+// NEMA USA
+// Created by Nina on 4/16/25.
+// Updated by Sajith on 4/21/25.
 
 import Foundation
 
-/// A simple wrapper around UserDefaults to persist auth tokens and the current user profile.
+/// A simple wrapper around UserDefaults to persist auth tokens, refresh tokens and the current user profile.
 final class DatabaseManager {
     static let shared = DatabaseManager()
     private init() {}
 
-    private let defaults  = UserDefaults.standard
-    private let tokenKey  = "authToken"
-    private let userKey   = "currentUser"
+    private let defaults         = UserDefaults.standard
+    private let tokenKey         = "authToken"
+    private let refreshTokenKey  = "refreshToken"
+    private let userKey          = "currentUser"
 
     // MARK: – Auth Token
 
     func saveToken(_ token: String) {
         defaults.set(token, forKey: tokenKey)
     }
-
     var authToken: String? {
         defaults.string(forKey: tokenKey)
     }
 
+    // MARK: – Refresh Token
+
+    func saveRefreshToken(_ token: String) {
+        defaults.set(token, forKey: refreshTokenKey)
+    }
+    var refreshToken: String? {
+        defaults.string(forKey: refreshTokenKey)
+    }
+
     func clearSession() {
         defaults.removeObject(forKey: tokenKey)
+        defaults.removeObject(forKey: refreshTokenKey)
         defaults.removeObject(forKey: userKey)
     }
 

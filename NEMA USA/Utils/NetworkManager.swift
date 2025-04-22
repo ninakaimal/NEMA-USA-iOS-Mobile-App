@@ -1,8 +1,7 @@
-//
-//  NetworkManager.swift
-//  NEMA USA
-//  Created by Sajith on 4/20/25.
-//
+// NetworkManager.swift
+// NEMA USA
+// Created by Sajith on 4/20/25.
+// Updated for token‑refresh on 4/22/25.
 
 import Foundation
 
@@ -16,7 +15,14 @@ enum NetworkError: Error {
 /// The JSON we expect from POST /api/login
 private struct LoginResponse: Decodable {
     let token: String
+    let refreshToken: String
     let user: UserProfile
+}
+
+/// The JSON we expect from POST /api/refresh-token
+private struct RefreshResponse: Decodable {
+    let token: String
+    let refreshToken: String
 }
 
 final class NetworkManager {
@@ -26,52 +32,126 @@ final class NetworkManager {
     /// **Point at the `/api` root** so all your calls land in the right place.
     private let baseURL = URL(string: "https://nema-api.kanakaagro.in/api")!
 
-    /// Logs in with email + password, returns token & full UserProfile
+    // MARK: – Helpers
+
+    /// Perform a URLRequest, retrying once after a token‑refresh if we get a 401.
+    private func performRequest(
+        _ request: URLRequest,
+        retrying: Bool = true,
+        completion: @escaping (Result<Data, NetworkError>) -> Void
+    ) {
+        URLSession.shared.dataTask(with: request) { data, resp, err in
+            if let err = err {
+                DispatchQueue.main.async { completion(.failure(.serverError(err.localizedDescription))) }
+                return
+            }
+            guard let http = resp as? HTTPURLResponse else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+            if http.statusCode == 401, retrying {
+                // try to refresh and then retry
+                self.refreshToken { refreshResult in
+                    switch refreshResult {
+                    case .success(let newToken):
+                        var newReq = request
+                        newReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                        self.performRequest(newReq, retrying: false, completion: completion)
+                    case .failure:
+                        DispatchQueue.main.async {
+                            DatabaseManager.shared.clearSession()
+                            completion(.failure(.invalidResponse))
+                        }
+                    }
+                }
+                return
+            }
+            guard (200..<300).contains(http.statusCode), let data = data else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+            DispatchQueue.main.async { completion(.success(data)) }
+        }
+        .resume()
+    }
+
+    /// Call our `/refresh-token` endpoint, rotate tokens on success.
+    private func refreshToken(completion: @escaping (Result<String, NetworkError>) -> Void) {
+        guard let refresh = DatabaseManager.shared.refreshToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let endpoint = baseURL.appendingPathComponent("refresh-token")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["refreshToken": refresh])
+
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            if let err = err {
+                DispatchQueue.main.async { completion(.failure(.serverError(err.localizedDescription))) }
+                return
+            }
+            guard
+                let http = resp as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode),
+                let data = data
+            else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse)) }
+                return
+            }
+            do {
+                let decoded = try JSONDecoder().decode(RefreshResponse.self, from: data)
+                // rotate
+                DatabaseManager.shared.saveToken(decoded.token)
+                DatabaseManager.shared.saveRefreshToken(decoded.refreshToken)
+                DispatchQueue.main.async { completion(.success(decoded.token)) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+            }
+        }
+        .resume()
+    }
+
+    // MARK: – Public API
+
     func login(
         email: String,
         password: String,
         completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
     ) {
-        // ✅ now appends “login” → https://…/api/login
         let endpoint = baseURL.appendingPathComponent("login")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = ["email": email, "password": password]
-        do {
-            request.httpBody = try JSONEncoder().encode(body)
-        } catch {
-            DispatchQueue.main.async {
+        do { request.httpBody = try JSONEncoder().encode(body) }
+        catch {
+            return DispatchQueue.main.async {
                 completion(.failure(.decodingError(error)))
             }
-            return
         }
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            // 1️⃣ Network error?
-            if let err = error {
-                DispatchQueue.main.async {
+        URLSession.shared.dataTask(with: request) { data, resp, err in
+            if let err = err {
+                return DispatchQueue.main.async {
                     completion(.failure(.serverError(err.localizedDescription)))
                 }
-                return
             }
-
-            // 2️⃣ Validate HTTP status & data
             guard
-                let http = response as? HTTPURLResponse,
+                let http = resp as? HTTPURLResponse,
                 (200..<300).contains(http.statusCode),
                 let data = data
             else {
-                DispatchQueue.main.async {
+                return DispatchQueue.main.async {
                     completion(.failure(.invalidResponse))
                 }
-                return
             }
-
-            // 3️⃣ Decode JSON token + user
             do {
                 let decoded = try JSONDecoder().decode(LoginResponse.self, from: data)
+                // persist both tokens
+                DatabaseManager.shared.saveToken(decoded.token)
+                DatabaseManager.shared.saveRefreshToken(decoded.refreshToken)
                 DispatchQueue.main.async {
                     completion(.success((token: decoded.token, user: decoded.user)))
                 }
@@ -84,86 +164,55 @@ final class NetworkManager {
         .resume()
     }
 
-    /// Fetch the logged‑in user’s profile
     func fetchProfile(
-        token: String,
         completion: @escaping (Result<UserProfile, NetworkError>) -> Void
     ) {
+        guard let token = DatabaseManager.shared.authToken else {
+            return completion(.failure(.invalidResponse))
+        }
         let endpoint = baseURL.appendingPathComponent("profile")
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let err = error {
-                DispatchQueue.main.async {
-                    completion(.failure(.serverError(err.localizedDescription)))
-                }
-                return
-            }
-            guard
-                let http = response as? HTTPURLResponse,
-                (200..<300).contains(http.statusCode),
-                let data = data
-            else {
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
-                return
-            }
-            do {
-                let profile = try JSONDecoder().decode(UserProfile.self, from: data)
-                DispatchQueue.main.async {
+        performRequest(req) { result in
+            switch result {
+            case .success(let data):
+                do {
+                    let profile = try JSONDecoder().decode(UserProfile.self, from: data)
                     completion(.success(profile))
-                }
-            } catch {
-                DispatchQueue.main.async {
+                } catch {
                     completion(.failure(.decodingError(error)))
                 }
+            case .failure(let err):
+                completion(.failure(err))
             }
         }
-        .resume()
     }
 
-    /// Fetches the logged‑in user’s family members
     func fetchFamily(
-        token: String,
         completion: @escaping (Result<[FamilyMember], NetworkError>) -> Void
     ) {
+        guard let token = DatabaseManager.shared.authToken else {
+            return completion(.failure(.invalidResponse))
+        }
         let endpoint = baseURL.appendingPathComponent("family")
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let err = error {
-                DispatchQueue.main.async {
-                    completion(.failure(.serverError(err.localizedDescription)))
-                }
-                return
-            }
-            guard
-                let http = response as? HTTPURLResponse,
-                (200..<300).contains(http.statusCode),
-                let data = data
-            else {
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
-                return
-            }
-            do {
-                let members = try JSONDecoder().decode([FamilyMember].self, from: data)
-                DispatchQueue.main.async {
+        performRequest(req) { result in
+            switch result {
+            case .success(let data):
+                do {
+                    let members = try JSONDecoder().decode([FamilyMember].self, from: data)
                     completion(.success(members))
-                }
-            } catch {
-                DispatchQueue.main.async {
+                } catch {
                     completion(.failure(.decodingError(error)))
                 }
+            case .failure(let err):
+                completion(.failure(err))
             }
         }
-        .resume()
     }
 }
-

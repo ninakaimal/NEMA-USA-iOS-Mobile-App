@@ -17,3 +17,12 @@ struct UserProfile: Codable {
     let comments: String?
     let membershipExpiryDate: String?
 }
+
+struct FamilyMember: Identifiable, Codable {
+    let id: Int
+    let name: String
+    let relationship: String
+    let email: String?
+    let dob: String?
+    let phone: String?
+}
