@@ -4,7 +4,6 @@
 //  Created by Nina on 4/1/25.
 //
 
-
 import SwiftUI
 
 struct ContentView: View {
@@ -33,7 +32,7 @@ struct ContentView: View {
                 AccountView()
                     .tag(2)
                     .tabItem {
-                        Image(systemName: "person.circle")
+                        Image(systemName: "person.crop.circle")
                         Text("Account")
                     }
 
@@ -56,3 +55,4 @@ struct ContentView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
 }
+

@@ -1,9 +1,9 @@
 //
 //  Event.swift
 //  NEMA USA
-//
-//  Created by Nina on 4/15/25.
-//
+//  Created by Nina on 4/15/25
+//  Updated by Arjun on 4/20/2025
+
 import Foundation
 
 struct Event: Identifiable, Decodable {
@@ -14,30 +14,34 @@ struct Event: Identifiable, Decodable {
     let category: String
     let imageUrl: String
     let isTBD: Bool
+    let isRegON: Bool        // ← new field
     let date: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, description, location, category, imageUrl, date, isTBD
+        case id, title, description, location, category, imageUrl, date, isTBD, isRegON
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        id = try container.decode(String.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
+        
+        id          = try container.decode(String.self, forKey: .id)
+        title       = try container.decode(String.self, forKey: .title)
         description = try container.decode(String.self, forKey: .description)
-        location = try container.decode(String.self, forKey: .location)
-        category = try container.decode(String.self, forKey: .category)
-        imageUrl = try container.decode(String.self, forKey: .imageUrl)
-        isTBD = try container.decode(Bool.self, forKey: .isTBD)
-
+        location    = try container.decode(String.self, forKey: .location)
+        category    = try container.decode(String.self, forKey: .category)
+        imageUrl    = try container.decode(String.self, forKey: .imageUrl)
+        isTBD       = try container.decode(Bool.self,   forKey: .isTBD)
+        isRegON     = try container.decodeIfPresent(Bool.self, forKey: .isRegON) ?? false
+        
         // Allow "To be announced" or null to be decoded as nil
         if isTBD {
             date = nil
+        } else if let dateString = try? container.decodeIfPresent(String.self, forKey: .date),
+                  let d = ISO8601DateFormatter().date(from: dateString) {
+            date = d
         } else {
-            let dateString = try container.decode(String.self, forKey: .date)
-            let formatter = ISO8601DateFormatter()
-            date = formatter.date(from: dateString)
+            date = nil
         }
     }
 }
+

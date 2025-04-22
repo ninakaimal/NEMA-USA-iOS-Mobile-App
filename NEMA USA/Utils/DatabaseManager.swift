@@ -2,6 +2,7 @@
 //  DatabaseManager.swift
 //  NEMA USA
 //  Created by Nina on 4/16/25.
+//  Updated by Sajith on 4/21/25
 //
 
 import Foundation

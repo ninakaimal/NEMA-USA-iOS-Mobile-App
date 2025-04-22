@@ -2,33 +2,31 @@
 //  LoginView.swift
 //  NEMA USA
 //  Created by Nina on 4/12/25.
+//  Updated by Sajith on 4/21/25
 //
 
 import SwiftUI
 
 struct LoginView: View {
-    // Bind directly to the same key that DatabaseManager.shared.saveToken writes to
+    // This is the same key AccountView watches
     @AppStorage("authToken") private var authToken: String?
 
     @State private var email        = ""
     @State private var password     = ""
-    @State private var errorMessage = ""
     @State private var isLoading    = false
-
-    // Animation states
-    @State private var logoScale: CGFloat     = 1.4
-    @State private var logoTopPadding: CGFloat = 200
-    @State private var logoOpacity: Double    = 0
-
-    // New state for showing alerts
     @State private var showAlert    = false
     @State private var alertTitle   = ""
     @State private var alertMessage = ""
 
+    // Logo animation
+    @State private var logoScale      : CGFloat = 1.4
+    @State private var logoTopPadding : CGFloat = 200
+    @State private var logoOpacity    : Double  = 0
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Animated logo
+                // MARK: – Logo
                 Image("LaunchLogo")
                     .resizable()
                     .scaledToFit()
@@ -44,72 +42,55 @@ struct LoginView: View {
                         }
                     }
 
-                // NEMA Malayalam text
+                // MARK: – Titles
                 Text("NEW ENGLAND MALAYALEE ASSOCIATION")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(Color.orange)
+                    .foregroundColor(.orange)
                     .multilineTextAlignment(.center)
-                    .padding(.top, -10)
 
                 Text("ന്യൂ ഇംഗ്ലണ്ട് മലയാളി അസോസിയേഷൻ‍")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(Color.orange)
+                    .foregroundColor(.orange)
                     .multilineTextAlignment(.center)
-                    .padding(.top, -10)
                     .padding(.bottom, 40)
 
-                // Email Field
+                // MARK: – Email Field
                 TextField("", text: $email)
                     .placeholder(when: email.isEmpty) {
                         Text("Email")
-                            .foregroundColor(Color.orange.opacity(0.5))
+                            .foregroundColor(.orange.opacity(0.2))
                             .padding(.leading, 6)
                     }
-                    .foregroundColor(Color.orange)
-                    .tint(Color.orange)
-                    .font(.system(size: 15))
+                    .keyboardType(.emailAddress)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
                     .padding(12)
                     .background(Color.white)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(Color.orange, lineWidth: 0.5)
                     )
-                    .autocapitalization(.none)
-                    .keyboardType(.emailAddress)
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.never)
                     .padding(.horizontal)
 
-                // Password Field
+                // MARK: – Password Field
                 SecureField("", text: $password)
                     .placeholder(when: password.isEmpty) {
                         Text("Password")
-                            .foregroundColor(Color.orange.opacity(0.5))
+                            .foregroundColor(.orange.opacity(0.2))
                             .padding(.leading, 6)
                     }
-                    .foregroundColor(Color.orange)
-                    .tint(Color.orange)
-                    .font(.system(size: 15))
+                    .disableAutocorrection(true)
+                    .autocapitalization(.none)
                     .padding(12)
                     .background(Color.white)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange, lineWidth: 1)
+                            .stroke(Color.orange, lineWidth: 0.5)
                     )
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.never)
                     .padding(.horizontal)
 
-                // Error Message
-                if !errorMessage.isEmpty {
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .font(.caption)
-                        .padding(.horizontal)
-                }
-
-                // Login Button
-                Button(action: login) {
+                // MARK: – Login Button
+                Button(action: performLogin) {
                     HStack {
                         Spacer()
                         if isLoading {
@@ -118,7 +99,6 @@ struct LoginView: View {
                             Text("Login")
                                 .foregroundColor(.white)
                                 .bold()
-                                .font(.system(size: 16))
                         }
                         Spacer()
                     }
@@ -127,12 +107,12 @@ struct LoginView: View {
                     .cornerRadius(10)
                 }
                 .padding(.horizontal)
-                .padding(.top, 4)
+                .disabled(isLoading)
 
-                // Footer Note
+                // MARK: – Footer
                 Text("© NEMA Boston, All rights reserved.")
                     .font(.footnote)
-                    .foregroundColor(Color.gray.opacity(0.7))
+                    .foregroundColor(.gray.opacity(0.7))
                     .padding(.top, 30)
 
                 Spacer(minLength: 20)
@@ -149,61 +129,48 @@ struct LoginView: View {
         }
     }
 
-    private func login() {
-        guard !email.isEmpty && !password.isEmpty else {
-            errorMessage = "Please enter both email and password"
+    private func performLogin() {
+        guard !email.isEmpty, !password.isEmpty else {
+            alertTitle   = "Missing Info"
+            alertMessage = "Please enter both email and password."
+            showAlert    = true
             return
         }
 
-        isLoading    = true
-        errorMessage = ""
+        isLoading = true
 
-        guard let url = URL(string: "https://nema-api.kanakaagro.in/api/login") else {
-            errorMessage = "Invalid API URL"
-            isLoading    = false
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod  = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody   = try? JSONSerialization.data(
-            withJSONObject: ["email": email, "password": password]
-        )
-
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        NetworkManager.shared.login(email: email, password: password) { result in
             DispatchQueue.main.async { isLoading = false }
 
-            if let err = error {
-                alertTitle   = "Login Failed"
-                alertMessage = err.localizedDescription
-                showAlert    = true
-                return
-            }
-
-            guard
-                let data = data,
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let token = json["token"] as? String
-            else {
-                alertTitle   = "Login Failed"
-                alertMessage = "Wrong email/password or server error."
-                showAlert    = true
-                return
-            }
-
-            // Success: persist token and show confirmation
-            DispatchQueue.main.async {
+            switch result {
+            case let .success((token, user)):
+                // 1) Persist full profile + token
+                DatabaseManager.shared.saveUser(user)
                 DatabaseManager.shared.saveToken(token)
-                alertTitle   = "Login Successful"
-                alertMessage = "Welcome back!"
+
+                // 2) ALSO update the @AppStorage binding
+                authToken = token
+
+                // 3) Success alert
+                alertTitle   = "Welcome, \(user.name)!"
+                alertMessage = "You have successfully logged in."
                 showAlert    = true
 
-                // Clear input fields
+                // 4) Clear form
                 email    = ""
                 password = ""
+
+            case let .failure(error):
+                alertTitle = "Login Failed"
+                alertMessage = {
+                    switch error {
+                    case .invalidResponse:     return "Server error—please try again."
+                    case .serverError(let msg): return msg
+                    case .decodingError:       return "Bad data from server."
+                    }
+                }()
+                showAlert = true
             }
         }
-        .resume()
     }
 }

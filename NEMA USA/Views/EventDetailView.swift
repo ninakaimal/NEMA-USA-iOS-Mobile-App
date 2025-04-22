@@ -1,6 +1,9 @@
-// EventDetailView.swift
-// NEMA USA
-// Created by Nina on 4/16/25.
+//
+//  EventDetailView.swift
+//  NEMA USA
+//  Created by Nina on 4/16/25.
+//  Updated by Arjun on 4/23/25
+//
 
 import SwiftUI
 import UIKit
@@ -8,62 +11,26 @@ import UIKit
 struct EventDetailView: View {
     let event: Event
 
-    init(event: Event) {
-        self.event = event
-        // Configure navigation bar appearance
-        if #available(iOS 15.0, *) {
-            let appearance = UINavigationBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor.orange
-            appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-            appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-
-            // White back-button text
-            let backItemAppearance = UIBarButtonItemAppearance()
-            backItemAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white]
-            appearance.backButtonAppearance = backItemAppearance
-
-            // White back-indicator arrow
-            if let arrow = UIImage(systemName: "chevron.backward")?.withTintColor(.white, renderingMode: .alwaysOriginal) {
-                appearance.setBackIndicatorImage(arrow, transitionMaskImage: arrow)
-            }
-
-            UINavigationBar.appearance().standardAppearance = appearance
-            UINavigationBar.appearance().scrollEdgeAppearance = appearance
-            UINavigationBar.appearance().compactAppearance = appearance
-            UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
-        } else {
-            // Fallback
-            UINavigationBar.appearance().barTintColor = .orange
-            UINavigationBar.appearance().titleTextAttributes = [.foregroundColor: UIColor.white]
-            UIBarButtonItem.appearance().tintColor = .white
-            UIBarButtonItem.appearance().setTitleTextAttributes([.foregroundColor: UIColor.white], for: .normal)
-
-            // Fallback arrow
-            UINavigationBar.appearance().backIndicatorImage = UIImage(systemName: "chevron.backward")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-            UINavigationBar.appearance().backIndicatorTransitionMaskImage = UIImage(systemName: "chevron.backward")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-        }
-        // Tint for other bar items
-        UINavigationBar.appearance().tintColor = .white
-    }
-
     var body: some View {
         ZStack(alignment: .top) {
+            // Top orange header
             Color.orange
                 .ignoresSafeArea(edges: .top)
                 .frame(height: 56)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Title & Category
+
+                    // MARK: – Title & Category
                     Text(event.title)
                         .font(.title2).bold()
                         .foregroundColor(.primary)
+
                     Text(event.category)
                         .font(.subheadline).italic()
                         .foregroundColor(.secondary)
 
-                    // Event Image
+                    // MARK: – Event Image
                     let asset = event.imageUrl.replacingOccurrences(of: ".png", with: "")
                     if UIImage(named: asset) != nil {
                         Image(asset)
@@ -78,7 +45,7 @@ struct EventDetailView: View {
                             .cornerRadius(12)
                     }
 
-                    // Details Card
+                    // MARK: – Details Card
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 8) {
                             Image(systemName: "calendar")
@@ -131,7 +98,7 @@ struct EventDetailView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(12)
 
-                    // About Card
+                    // MARK: – About Card
                     VStack(alignment: .leading, spacing: 8) {
                         Text("About This Event")
                             .font(.headline)
@@ -145,30 +112,43 @@ struct EventDetailView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(12)
 
-                    // More Info Button
-                    Button(action: {
-                        if let url = URL(string: "https://www.nemausa.org/") {
-                            UIApplication.shared.open(url)
+                    // MARK: – More Info or Register Button
+                    if event.isRegON {
+                        NavigationLink(destination: EventRegistrationView(event: event)) {
+                            Text("Register")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
                         }
-                    }) {
-                        Text("More Information")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
+                        .padding(.top, 16)
+                    } else {
+                        Button(action: {
+                            if let url = URL(string: "https://www.nemausa.org/") {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            Text("More Information")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                        .padding(.top, 16)
                     }
-                    .padding(.top, 16)
 
-                }
+                } // end VStack
                 .padding()
                 .background(Color(.systemBackground))
-            }
-        }
+            } // end ScrollView
+        } // end ZStack
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
-        .accentColor(.white)
+        // ↓ Removed the per‑view .accentColor(.white) here
     }
 }
 

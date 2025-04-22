@@ -32,7 +32,7 @@ struct ContactField: View {
             .frame(maxHeight:  50) // explicit max height
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.orange, lineWidth: 0.5)
+                    .stroke(Color.orange, lineWidth: 0.2)
                     .background(Color.white.cornerRadius(10))
             )
         }

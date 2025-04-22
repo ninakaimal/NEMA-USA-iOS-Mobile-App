@@ -1,6 +1,9 @@
-// CalendarView.swift
-// NEMA USA
-// Created by Nina on 4/16/25.
+//
+//  CalendarView.swift
+//  NEMA USA
+//  Created by Nina on 4/16/25.
+//  Updated by Sajith on 4/22/25
+//
 
 import SwiftUI
 
@@ -23,7 +26,7 @@ struct CalendarView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
-                        BannerView()
+                        // BannerView() <- don't show top banner for this page
                         Spacer().frame(height: 16)
 
                         calendarHeader
@@ -39,7 +42,8 @@ struct CalendarView: View {
                     .background(Color(.systemBackground))
                 }
             }
-            .navigationBarHidden(true)
+            .navigationTitle("Events Calendar")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -47,24 +51,24 @@ struct CalendarView: View {
 
     private var calendarHeader: some View {
         VStack(spacing: 8) {
-            Text("Events Calendar")
-                .font(.title2)
-                .foregroundColor(.primary)
-                .padding(.top, 8)
+            //Text("Events Calendar")
+             //   .font(.title2)
+             //   .foregroundColor(.primary)
+             //   .padding(.top, 8)
 
             Text("Click on a specific day to see the NEMA event details")
                 .font(.subheadline)
                 .foregroundColor(.gray)
+                .padding(.bottom, 8)
 
             HStack(spacing: 12) {
-                // ← Previous month
                 Button(action: goToPreviousMonth) {
                     Image(systemName: "chevron.left")
                         .font(.body)
                         .foregroundColor(.primary)
+
                 }
 
-                // Month picker
                 Picker("Month", selection: $displayedMonth) {
                     ForEach(1...12, id: \.self) { m in
                         Text(monthNames[m - 1]).tag(m)
@@ -72,7 +76,6 @@ struct CalendarView: View {
                 }
                 .pickerStyle(MenuPickerStyle())
 
-                // Year picker
                 Picker("Year", selection: $displayedYear) {
                     ForEach(2023...2026, id: \.self) { y in
                         Text("\(y)").tag(y)
@@ -81,7 +84,6 @@ struct CalendarView: View {
                 .pickerStyle(MenuPickerStyle())
                 .environment(\.locale, Locale(identifier: "en_US_POSIX"))
 
-                // → Next month
                 Button(action: goToNextMonth) {
                     Image(systemName: "chevron.right")
                         .font(.body)
@@ -119,18 +121,17 @@ struct CalendarView: View {
 
             ForEach(generateCalendarDates(), id: \.self) { date in
                 DayCell(
-                    date: date,
-                    isInMonth: calendar.component(.month, from: date) == displayedMonth,
-                    hasEvent:  !events(on: date).isEmpty,
-                    isSelected: selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
+                    date:        date,
+                    isInMonth:   calendar.component(.month, from: date) == displayedMonth,
+                    hasEvent:    !events(on: date).isEmpty,
+                    isSelected:  selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
                 )
                 .onTapGesture { selectedDate = date }
             }
         }
     }
 
-    // MARK: – Events Section
-
+    // MARK: – Events Section (always returns a View)
     private var eventsSection: some View {
         Group {
             if let sel = selectedDate {
@@ -160,6 +161,8 @@ struct CalendarView: View {
                     }
                 }
                 .padding(.horizontal)
+            } else {
+                EmptyView()
             }
         }
     }
@@ -200,32 +203,28 @@ struct CalendarView: View {
         ) else { return [] }
 
         var dates: [Date] = []
-        // leading days
         let weekday = calendar.component(.weekday, from: firstDayOfMonth)
         let leadingCount = (weekday - calendar.firstWeekday + 7) % 7
-        // 1..<leadingCount+1 is empty when leadingCount == 0
-        for i in 1..<leadingCount + 1 {
+        for i in 1..<(leadingCount + 1) {
             if let d = calendar.date(byAdding: .day,
                                      value: -leadingCount + (i-1),
                                      to: firstDayOfMonth) {
                 dates.append(d)
             }
         }
-        // month days
         let range = calendar.range(of: .day, in: .month, for: firstDayOfMonth)!
         for day in range {
-            if let d = calendar.date(from: DateComponents(year: displayedYear, month: displayedMonth, day: day)) {
+            if let d = calendar.date(from: DateComponents(
+                year: displayedYear, month: displayedMonth, day: day)) {
                 dates.append(d)
             }
         }
-        // trailing days
         while dates.count % 7 != 0 {
             if let last = dates.last,
                let next = calendar.date(byAdding: .day, value: 1, to: last) {
                 dates.append(next)
             }
         }
-
         return dates
     }
 }
@@ -270,3 +269,4 @@ struct DayCell: View {
         .cornerRadius(10)
     }
 }
+

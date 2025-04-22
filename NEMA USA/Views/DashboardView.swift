@@ -68,7 +68,7 @@ struct DashboardView: View {
                     .background(Color(.systemBackground))
                     .overlay(
                         RoundedRectangle(cornerRadius: 25)
-                            .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                     )
                     .padding(.horizontal)
                 }

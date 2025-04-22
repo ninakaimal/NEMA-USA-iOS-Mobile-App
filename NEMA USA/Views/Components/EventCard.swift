@@ -1,11 +1,8 @@
-//
-//  EventCard.swift
-//  NEMA USA
-//  Created by Nina on 4/15/25.
-//
+// EventCard.swift
+// NEMA USA
+// Created by Nina on 4/15/25.
 
 import SwiftUI
-import MapKit
 import UIKit
 
 struct EventCard: View {
@@ -13,32 +10,27 @@ struct EventCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // MARK: – Local Asset Image
-            Group {
-                // strip “.png” if it's there
-                let assetName = event.imageUrl
-                    .replacingOccurrences(of: ".png", with: "")
-                if UIImage(named: assetName) != nil {
-                    Image(assetName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 180)
-                        .clipped()
-                        .cornerRadius(10)
-                } else {
-                    // fallback placeholder if the asset is missing
-                    Color.gray.opacity(0.3)
-                        .frame(height: 180)
-                        .cornerRadius(10)
-                }
+            // Image
+            let assetName = event.imageUrl.replacingOccurrences(of: ".png", with: "")
+            if UIImage(named: assetName) != nil {
+                Image(assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 180)
+                    .clipped()
+                    .cornerRadius(10)
+            } else {
+                Color.gray.opacity(0.3)
+                    .frame(height: 180)
+                    .cornerRadius(10)
             }
 
-            // MARK: – Title
+            // Title
             Text(event.title)
                 .font(.headline)
                 .foregroundColor(.primary)
 
-            // MARK: – Date / TBD
+            // Date
             Text(event.isTBD
                  ? "📅 To be announced"
                  : "📅 \(event.date?.formatted(date: .abbreviated, time: .omitted) ?? "")"
@@ -46,7 +38,7 @@ struct EventCard: View {
             .font(.subheadline)
             .foregroundColor(.secondary)
 
-            // MARK: – Location
+            // Location
             Button(action: {
                 MapAppLauncher.presentMapOptions(for: event.location)
             }) {
@@ -62,7 +54,7 @@ struct EventCard: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // MARK: – Description
+            // Description
             Text(event.description)
                 .font(.body)
                 .foregroundColor(.secondary)
@@ -74,3 +66,4 @@ struct EventCard: View {
         .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
     }
 }
+

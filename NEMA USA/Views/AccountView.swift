@@ -1,138 +1,215 @@
-
 //
 //  AccountView.swift
 //  NEMA USA
 //  Created by Arjun on 4/15/25.
+//  Updated by Sajith on 4/21/25
 //
 
 import SwiftUI
 
-struct AccountView: View {
-    // 1) Watch the same key where LoginView writes the token
-    @AppStorage("authToken") private var authToken: String?
+// MARK: – FamilyMember model
+struct FamilyMember: Identifiable, Codable {
+    let id: Int
+    let name: String
+    let relationship: String
+    let email: String?
+    let dob: String?
+    let phone: String?
+}
 
-    @State private var profile: UserProfile?
-    @State private var isLoading = false
+struct AccountView: View {
+    @AppStorage("authToken") private var authToken: String?
+    @State private var profile:      UserProfile?
+    @State private var family:       [FamilyMember] = []
+    @State private var isLoadingFam: Bool           = false
 
     var body: some View {
-        Group {
-            // 2) If no token, show login form
-            if authToken == nil {
-                LoginView()
-            }
-            // 3) While we’re fetching, show spinner
-            else if isLoading {
-                ProgressView("Loading profile…")
-            }
-            // 4) Once loaded, display profile
-            else if let p = profile {
-                VStack(spacing: 16) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .resizable()
-                        .frame(width: 100, height: 100)
-                        .foregroundColor(.orange)
-
-                    Text(p.name)
-                        .font(.title2)
-                        .bold()
-
-                    HStack {
-                        Text("Phone:")
-                        Spacer()
-                        Text(p.phone)
-                    }
-
-                    HStack {
-                        Text("Email:")
-                        Spacer()
-                        Text(p.email)
-                    }
-
-                    HStack {
-                        Text("Date of Birth:")
-                        Spacer()
-                        Text(p.dob ?? "Not set")
-                    }
-
-                    HStack {
-                        Text("Address:")
-                        Spacer()
-                        Text(p.address)
-                    }
-
-                    if let comments = p.comments {
-                        Text("Note: \(comments)")
-                            .italic()
-                            .font(.footnote)
-                    }
-
-                    Spacer()
-                }
-                .padding()
-            }
-            // 5) No profile found in both network & cache
-            else {
-                Text("Profile not found.")
-            }
+        NavigationView {
+            content
         }
-        // 6) Trigger loadProfile on first appear if we have a token
-        .onAppear {
-            if authToken != nil {
-                loadProfile()
-            }
-        }
-        // 7) Also trigger loadProfile whenever the token flips non‑nil
-        .onChange(of: authToken) { new in
-            if new != nil {
-                loadProfile()
-            }
-        }
-        .navigationBarTitle("Account", displayMode: .inline)
+//        .navigationBarHidden(false)
+        //  .navigationTitle("My Account")
+        .navigationBarTitle("My Account", displayMode: .inline)
+        .accentColor(.primary)
+        .onAppear { loadAllData() }
+        .onChange(of: authToken) { _ in loadAllData() }
     }
 
-    // MARK: – Profile Loading
-
-    private func loadProfile() {
-        guard let token = authToken,
-              let url   = URL(string: "https://nema-api.kanakaagro.in/api/profile")
-        else {
-            // no token → stop loading
-            isLoading = false
-            return
+    @ViewBuilder
+    private var content: some View {
+        if authToken == nil || profile == nil {
+            LoginView()
+        } else {
+            profileScroll
         }
+    }
 
-        isLoading = true
+    /// Scrollable profile + family, with top orange band
+    private var profileScroll: some View {
+        ZStack(alignment: .top) {
+            // orange background behind the nav‑bar
+            Color.orange
+                .ignoresSafeArea(edges: .top)
+                .frame(height: 56)
 
+            // main white content
+            Color(.systemBackground)
+               // .ignoresSafeArea(edges: .bottom)
+                .ignoresSafeArea(edges: [.bottom, .horizontal])
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    profileCard
+                    familySection
+                    Spacer(minLength: 32)
+                }
+                .padding(.vertical)
+            }
+        }
+    }
+
+    /// Main profile card
+    private var profileCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 16) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 72, height: 72)
+                    .overlay(
+                        Text(String(profile!.name.prefix(1)))
+                            .font(.largeTitle)
+                            .foregroundColor(.white)
+                    )
+                Text(profile!.name)
+                    .font(.title)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                InfoRow(label: "Email",   value: profile!.email)
+                InfoRow(label: "Phone",   value: profile!.phone)
+                InfoRow(label: "DOB",     value: profile!.dateOfBirth ?? "Not set")
+                InfoRow(label: "Address", value: profile!.address)
+                if let notes = profile!.comments {
+                    InfoRow(label: "Notes", value: notes, isItalic: true)
+                }
+                InfoRow(
+                    label: "Membership Expires",
+                    value: profile!.membershipExpiryDate ?? "Not set"
+                )
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(16)
+        .shadow(radius: 5, y: 3)
+        .padding(.horizontal)
+    }
+
+    /// “Your Family” list
+    private var familySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Your Family")
+                .font(.headline)
+                .padding(.horizontal)
+
+            if isLoadingFam {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                    .padding()
+            } else {
+                ForEach(family) { member in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(member.name)
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                            Spacer()
+                        }
+                        InfoRow(label: "Relation", value: member.relationship)
+                        InfoRow(label: "Email",    value: member.email ?? "—")
+                        InfoRow(label: "DOB",      value: member.dob   ?? "—")
+                        InfoRow(label: "Phone",    value: member.phone ?? "—")
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
+                    .shadow(radius: 3, y: 2)
+                    .padding(.horizontal)
+                }
+            }
+        }
+    }
+
+    // MARK: – Data Loading
+
+    private func loadAllData() {
+        loadLocalProfile()
+        loadFamily()
+    }
+
+    private func loadLocalProfile() {
+        if let cached = DatabaseManager.shared.currentUser {
+            profile = cached
+        }
+        guard let token = authToken else { return }
+        NetworkManager.shared.fetchProfile(token: token) { result in
+            switch result {
+            case .success(let fresh):
+                DatabaseManager.shared.saveUser(fresh)
+                profile = fresh
+            case .failure(let err):
+                print("⚠️ Failed to fetch profile:", err)
+            }
+        }
+    }
+
+    private func loadFamily() {
+        family = []
+        guard let token = authToken,
+              let url = URL(string: "https://nema-api.kanakaagro.in/api/family")
+        else { return }
+
+        isLoadingFam = true
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        URLSession.shared.dataTask(with: req) { data, _, error in
-            DispatchQueue.main.async { isLoading = false }
-
-            if let data = data {
-                // debug raw payload
-                if let raw = String(data: data, encoding: .utf8) {
-                    print("⤷ [Profile] raw response: \(raw)")
-                }
-                // try decoding fresh
-                if let fetched = try? JSONDecoder().decode(UserProfile.self, from: data) {
-                    DispatchQueue.main.async {
-                        profile = fetched
-                        // cache locally for offline
-                        DatabaseManager.shared.saveUser(fetched)
-                    }
-                    return
-                }
-            }
-
-            // fallback to cached UserProfile if decode or network fails
-            if let cached = DatabaseManager.shared.currentUser {
-                DispatchQueue.main.async {
-                    profile = cached
-                }
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            DispatchQueue.main.async { isLoadingFam = false }
+            if let data = data,
+               let fetched = try? JSONDecoder().decode([FamilyMember].self, from: data) {
+                DispatchQueue.main.async { family = fetched }
             }
         }
         .resume()
+    }
+}
+
+// MARK: – Reusable InfoRow
+private struct InfoRow: View {
+    let label   : String
+    let value   : String
+    var isItalic: Bool = false
+
+    var body: some View {
+        HStack {
+            Text("\(label):")
+                .fontWeight(.medium)
+            Spacer()
+            Text(value)
+                .italic(isItalic)
+        }
+        .font(.subheadline)
+        .foregroundColor(.primary)
+    }
+}
+
+private extension Text {
+    func italic(_ flag: Bool) -> Text {
+        flag ? self.italic() : self
     }
 }
