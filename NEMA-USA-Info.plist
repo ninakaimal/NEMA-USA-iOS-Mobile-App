@@ -2,26 +2,48 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIcons</key>
-	<dict>
-  		<key>CFBundlePrimaryIcon</key>
-  		<dict>
-    		<key>CFBundleIconName</key>
-    		<string>AppIcon</string>
-  		</dict>
-	</dict>
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconName</key>
+            <string>AppIcon</string>
+        </dict>
+    </dict>
 
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
 
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
 
-	<key>NSUserNotificationUsageDescription</key>
-	<string>We’d like to send you event reminders and NEMA updates.</string>
+    <key>NSUserNotificationUsageDescription</key>
+    <string>We’d like to send you event reminders and NEMA updates.</string>
+
+    <!-- Remove your old Scheme/Host keys and insert this: -->
+    <key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+        <!-- An identifier; can be your bundle id -->
+        <key>CFBundleURLName</key>
+        <string>com.your.bundle</string>
+
+        <!-- The scheme(s) your app handles -->
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.your.bundle</string>
+        </array>
+
+        <!-- The hosts you want to catch -->
+        <key>CFBundleURLHosts</key>
+        <array>
+          <string>paypalpay</string>
+          <string>paypalcancel</string>
+        </array>
+      </dict>
+    </array>
 
 </dict>
 </plist>
-

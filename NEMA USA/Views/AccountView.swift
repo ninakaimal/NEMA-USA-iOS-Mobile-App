@@ -2,7 +2,7 @@
 //  AccountView.swift
 //  NEMA USA
 //  Created by Arjun on 4/15/25.
-//  Updated by Sajith on 4/21/25
+//  Updated by Sajith on 4/23/25
 //
 
 import SwiftUI
@@ -20,7 +20,6 @@ struct AccountView: View {
                 .navigationBarTitle("My Account", displayMode: .inline)
                 .navigationBarItems(
                     trailing:
-                        // only show Logout if we actually have a token
                         Group {
                             if authToken != nil {
                                 Button("Logout") {
@@ -96,16 +95,19 @@ struct AccountView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                InfoRow(label: "Email",   value: profile!.email)
-                InfoRow(label: "Phone",   value: profile!.phone)
-                InfoRow(label: "DOB",     value: profile!.dateOfBirth ?? "Not set")
+                InfoRow(label: "Email", value: profile!.email)
+                InfoRow(label: "Phone", value: profile!.phone)
+                InfoRow(
+                    label: "DOB",
+                    value: profile!.dateOfBirth.map(formatDate) ?? "Not set"
+                )
                 InfoRow(label: "Address", value: profile!.address)
                 if let notes = profile!.comments {
                     InfoRow(label: "Notes", value: notes, isItalic: true)
                 }
                 InfoRow(
                     label: "Membership Expires",
-                    value: profile!.membershipExpiryDate ?? "Not set"
+                    value: profile!.membershipExpiryDate.map(formatDate) ?? "No info"
                 )
             }
         }
@@ -137,7 +139,10 @@ struct AccountView: View {
                         }
                         InfoRow(label: "Relation", value: member.relationship)
                         InfoRow(label: "Email",    value: member.email ?? "—")
-                        InfoRow(label: "DOB",      value: member.dob   ?? "—")
+                        InfoRow(
+                            label: "DOB",
+                            value: member.dob.map(formatDate) ?? "—"
+                        )
                         InfoRow(label: "Phone",    value: member.phone ?? "—")
                     }
                     .padding()
@@ -150,22 +155,58 @@ struct AccountView: View {
         }
     }
 
-    // MARK: – Data Loading
+    // MARK: – Date formatting helper
+    private func formatDate(_ isoString: String) -> String {
+        // 1) Try full ISO8601 with fractional seconds
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFormatter.date(from: isoString) {
+            return longStyle(d)
+        }
+        // 2) Try ISO8601 without fractions
+        let isoNoFrac = ISO8601DateFormatter()
+        isoNoFrac.formatOptions = [.withInternetDateTime]
+        if let d = isoNoFrac.date(from: isoString) {
+            return longStyle(d)
+        }
+        // 3) Try yyyy‑MM‑dd
+        let dfDay = DateFormatter()
+        dfDay.dateFormat = "yyyy-MM-dd"
+        if let d = dfDay.date(from: isoString) {
+            return longStyle(d)
+        }
+        // 4) Try yyyy‑MM → format as "MMMM yyyy"
+        if isoString.count == 7, isoString.dropFirst(4).first == "-" {
+            let dfMonth = DateFormatter()
+            dfMonth.dateFormat = "yyyy-MM"
+            if let d = dfMonth.date(from: isoString) {
+                let out = DateFormatter()
+                out.dateFormat = "MMMM yyyy"
+                return out.string(from: d)
+            }
+        }
+        // 5) Fallback to raw
+        return isoString
+    }
 
+    private func longStyle(_ date: Date) -> String {
+        let out = DateFormatter()
+        out.dateStyle = .long
+        out.timeStyle = .none
+        return out.string(from: date)
+    }
+
+    // MARK: – Data Loading
     private func loadAllData() {
         loadLocalProfile()
         loadFamily()
     }
 
     private func loadLocalProfile() {
-        // Show any cached data immediately
         if let cached = DatabaseManager.shared.currentUser {
             profile = cached
         }
-        // Bail out if we don’t have a token yet
         guard authToken != nil else { return }
-
-        // 📡 Fetch fresh profile
         NetworkManager.shared.fetchProfile { result in
             switch result {
             case .success(let fresh):
@@ -200,12 +241,10 @@ struct AccountView: View {
 }
 
 // MARK: – Reusable InfoRow
-
 private struct InfoRow: View {
     let label   : String
     let value   : String
     var isItalic: Bool = false
-
     var body: some View {
         HStack {
             Text("\(label):")
@@ -224,4 +263,3 @@ private extension Text {
         flag ? self.italic() : self
     }
 }
-

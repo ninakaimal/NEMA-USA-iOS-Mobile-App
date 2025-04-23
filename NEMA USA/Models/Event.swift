@@ -14,7 +14,7 @@ struct Event: Identifiable, Decodable {
     let category: String
     let imageUrl: String
     let isTBD: Bool
-    let isRegON: Bool        // ← new field
+    let isRegON: Bool
     let date: Date?
 
     enum CodingKeys: String, CodingKey {
