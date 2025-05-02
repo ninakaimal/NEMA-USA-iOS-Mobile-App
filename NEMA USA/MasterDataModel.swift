@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct UserProfile: Codable {
+struct UserProfile: Codable, Equatable {
     let id: Int
     let name: String
     let dateOfBirth: String?   // matches JSON "dateOfBirth"
@@ -20,9 +20,9 @@ struct UserProfile: Codable {
 
 struct FamilyMember: Identifiable, Codable {
     let id: Int
-    let name: String
-    let relationship: String
-    let email: String?
-    let dob: String?
-    let phone: String?
+    var name: String
+    var relationship: String
+    var email: String?
+    var dob: String?
+    var phone: String?
 }

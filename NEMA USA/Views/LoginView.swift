@@ -1,14 +1,11 @@
-//
-//  LoginView.swift
-//  NEMA USA
-//  Created by Nina on 4/12/25.
-//  Updated by Sajith on 4/21/25
-//
+// LoginView.swift
+// NEMA USA
+// Created by Nina on 4/12/25.
+// Updated by Sajith on 4/24/25
 
 import SwiftUI
 
 struct LoginView: View {
-    // This is the same key AccountView watches
     @AppStorage("authToken") private var authToken: String?
 
     @State private var email        = ""
@@ -18,6 +15,9 @@ struct LoginView: View {
     @State private var alertTitle   = ""
     @State private var alertMessage = ""
 
+    // Hold onto a successful login until the user taps OK
+    @State private var pendingLogin: (token: String, user: UserProfile)?
+
     // Logo animation
     @State private var logoScale      : CGFloat = 1.4
     @State private var logoTopPadding : CGFloat = 200
@@ -26,7 +26,7 @@ struct LoginView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // MARK: – Logo
+                // Logo
                 Image("LaunchLogo")
                     .resizable()
                     .scaledToFit()
@@ -42,7 +42,7 @@ struct LoginView: View {
                         }
                     }
 
-                // MARK: – Titles
+                // Titles
                 Text("NEW ENGLAND MALAYALEE ASSOCIATION")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.orange)
@@ -54,7 +54,7 @@ struct LoginView: View {
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 40)
 
-                // MARK: – Email Field
+                // Email Field
                 TextField("", text: $email)
                     .placeholder(when: email.isEmpty) {
                         Text("Email")
@@ -72,7 +72,7 @@ struct LoginView: View {
                     )
                     .padding(.horizontal)
 
-                // MARK: – Password Field
+                // Password Field
                 SecureField("", text: $password)
                     .placeholder(when: password.isEmpty) {
                         Text("Password")
@@ -89,7 +89,7 @@ struct LoginView: View {
                     )
                     .padding(.horizontal)
 
-                // MARK: – Login Button
+                // Login Button
                 Button(action: performLogin) {
                     HStack {
                         Spacer()
@@ -109,7 +109,7 @@ struct LoginView: View {
                 .padding(.horizontal)
                 .disabled(isLoading)
 
-                // MARK: – Footer
+                // Footer
                 Text("© NEMA Boston, All rights reserved.")
                     .font(.footnote)
                     .foregroundColor(.gray.opacity(0.7))
@@ -124,49 +124,54 @@ struct LoginView: View {
             Alert(
                 title: Text(alertTitle),
                 message: Text(alertMessage),
-                dismissButton: .default(Text("OK"))
+                dismissButton: .default(Text("OK")) {
+                    // Only commit on success
+                    if let login = pendingLogin {
+                        DatabaseManager.shared.saveUser(login.user)
+                        DatabaseManager.shared.saveToken(login.token)
+                        authToken = login.token
+                        pendingLogin = nil
+                    }
+                }
             )
         }
     }
 
     private func performLogin() {
+        // 1) Validate inputs
         guard !email.isEmpty, !password.isEmpty else {
             alertTitle   = "Missing Info"
             alertMessage = "Please enter both email and password."
+            pendingLogin = nil
             showAlert    = true
             return
         }
 
         isLoading = true
 
+        // 2) Attempt login
         NetworkManager.shared.login(email: email, password: password) { result in
             DispatchQueue.main.async { isLoading = false }
 
             switch result {
             case let .success((token, user)):
-                // 1) Persist full profile + token
-                DatabaseManager.shared.saveUser(user)
-                DatabaseManager.shared.saveToken(token)
-
-                // 2) ALSO update the @AppStorage binding
-                authToken = token
-
-                // 3) Success alert
+                // Defer commit until OK
+                pendingLogin = (token, user)
                 alertTitle   = "Welcome, \(user.name)!"
                 alertMessage = "You have successfully logged in."
                 showAlert    = true
-
-                // 4) Clear form
+                // Clear form
                 email    = ""
                 password = ""
 
             case let .failure(error):
-                alertTitle = "Login Failed"
+                pendingLogin = nil
+                alertTitle   = "Login Failed"
                 alertMessage = {
                     switch error {
-                    case .invalidResponse:     return "Server error—please try again."
                     case .serverError(let msg): return msg
-                    case .decodingError:       return "Bad data from server."
+                    case .invalidResponse:       return "Server error—please try again."
+                    case .decodingError:         return "Bad data from server."
                     }
                 }()
                 showAlert = true

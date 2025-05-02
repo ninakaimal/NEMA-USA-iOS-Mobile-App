@@ -9,25 +9,46 @@ import SwiftUI
 
 struct AccountView: View {
     @AppStorage("authToken") private var authToken: String?
-    @State private var profile:      UserProfile?
-    @State private var family:       [FamilyMember] = []
-    @State private var isLoadingFam: Bool           = false
+    @State private var profile: UserProfile?
+    @State private var family: [FamilyMember] = []
+    @State private var isEditingProfile = false
+    @State private var isEditingFamily = false
+    @State private var editName = ""
+    @State private var editPhone = ""
+    @State private var editDOB = ""
+    @State private var editAddress = ""
+    @State private var isUpdating = false
+    @State private var showErrorAlert = false
+    @State private var updateErrorMessage = ""
+    @State private var isLoadingFam: Bool = false
     @State private var showLogoutConfirmation = false
 
     var body: some View {
         NavigationView {
             content
+                .alert("Update Failed", isPresented: $showErrorAlert) {
+                  Button("OK", role: .cancel) {}
+                } message: {
+                  Text(updateErrorMessage)
+                }
                 .navigationBarTitle("My Account", displayMode: .inline)
                 .navigationBarItems(
-                    trailing:
-                        Group {
-                            if authToken != nil {
-                                Button("Logout") {
-                                    showLogoutConfirmation = true
-                                }
-                                .foregroundColor(.white)
-                            }
-                        }
+                  trailing: HStack {
+                    if authToken != nil {
+                      if isEditingProfile {
+                        Button("Save") { saveProfile() }
+                          .foregroundColor(.white)
+                          .disabled(isUpdating)
+                        Button("Cancel") { isEditingProfile = false }
+                          .foregroundColor(.white)
+                      } else {
+                        Button("Edit") { isEditingProfile = true }
+                          .foregroundColor(.white)
+                        Button("Logout") { showLogoutConfirmation = true }
+                          .foregroundColor(.white)
+                      }
+                    }
+                  }
                 )
                 .alert(isPresented: $showLogoutConfirmation) {
                     Alert(
@@ -44,15 +65,31 @@ struct AccountView: View {
         .accentColor(.primary)
         .onAppear { loadAllData() }
         .onChange(of: authToken) { _ in loadAllData() }
+        .onChange(of: profile) { newProfile in
+          guard let p = newProfile else { return }
+          editName    = p.name
+          editPhone   = p.phone
+          editDOB     = p.dateOfBirth ?? ""
+          editAddress = p.address
+        }
     }
 
     @ViewBuilder
     private var content: some View {
-        if authToken == nil || profile == nil {
-            LoginView()
-        } else {
-            profileScroll
+      if authToken == nil || profile == nil {
+        VStack(spacing: 16) {
+          LoginView()
+          Divider().padding(.horizontal)
+          NavigationLink(destination: RegistrationView()) {
+            Text("Don’t have an account? Sign Up")
+              .font(.subheadline)
+              .foregroundColor(.orange)
+          }
+          .padding(.top, 8)
         }
+      } else {
+        profileScroll
+      }
     }
 
     private var profileScroll: some View {
@@ -86,28 +123,58 @@ struct AccountView: View {
                             .font(.largeTitle)
                             .foregroundColor(.white)
                     )
-                Text(profile!.name)
+                if isEditingProfile {
+                  TextField("Name", text: $editName)
+                    .font(.title)
+                } else {
+                  Text(profile!.name)
                     .font(.title)
                     .fontWeight(.semibold)
+                }
                 Spacer()
             }
-
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
                 InfoRow(label: "Email", value: profile!.email)
-                InfoRow(label: "Phone", value: profile!.phone)
-                InfoRow(
+
+                if isEditingProfile {
+                  Text("Phone:")
+                    .font(.subheadline).fontWeight(.bold)
+                  TextField("Phone", text: $editPhone)
+                    .keyboardType(.phonePad)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                } else {
+                  InfoRow(label: "Phone", value: profile!.phone)
+                }
+
+                if isEditingProfile {
+                  Text("DOB:")
+                    .font(.subheadline).fontWeight(.bold)
+                  TextField("YYYY-MM", text: $editDOB)
+                    .placeholder(when: editDOB.isEmpty) {
+                      Text("YYYY-MM").foregroundColor(.gray)
+                    }
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                } else {
+                  InfoRow(
                     label: "DOB",
                     value: profile!.dateOfBirth.map(formatDate) ?? "Not set"
-                )
-                InfoRow(label: "Address", value: profile!.address)
-                if let notes = profile!.comments {
-                    InfoRow(label: "Notes", value: notes, isItalic: true)
+                  )
                 }
+
+                if isEditingProfile {
+                  Text("Address:")
+                    .font(.subheadline).fontWeight(.bold)
+                  TextField("Address", text: $editAddress)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                } else {
+                  InfoRow(label: "Address", value: profile!.address)
+                }
+
                 InfoRow(
-                    label: "Membership Expires",
-                    value: profile!.membershipExpiryDate.map(formatDate) ?? "No info"
+                  label: "Membership Expires",
+                  value: profile!.membershipExpiryDate.map(formatDate) ?? "No info"
                 )
             }
         }
@@ -119,63 +186,215 @@ struct AccountView: View {
     }
 
     private var familySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Your Family")
-                .font(.headline)
-                .padding(.horizontal)
-
-            if isLoadingFam {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                    .padding()
+      VStack(alignment: .leading, spacing: 12) {
+        HStack {
+          Text("Your Family")
+            .font(.headline)
+          Spacer()
+          if authToken != nil {
+            if isEditingFamily {
+              Button("Save") { saveFamily() }
+                .foregroundColor(.orange)
+                .disabled(isUpdating)
+              Button("Cancel") { isEditingFamily = false }
+                .foregroundColor(.orange)
             } else {
-                ForEach(family) { member in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(member.name)
-                                .font(.subheadline)
-                                .fontWeight(.bold)
-                            Spacer()
-                        }
-                        InfoRow(label: "Relation", value: member.relationship)
-                        InfoRow(label: "Email",    value: member.email ?? "—")
-                        InfoRow(
-                            label: "DOB",
-                            value: member.dob.map(formatDate) ?? "—"
-                        )
-                        InfoRow(label: "Phone",    value: member.phone ?? "—")
-                    }
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
-                    .shadow(radius: 3, y: 2)
-                    .padding(.horizontal)
+              Button("Edit") { isEditingFamily = true }
+                .foregroundColor(.orange)
+            }
+          }
+        }
+        .padding(.horizontal)
+
+        if isLoadingFam {
+          ProgressView()
+            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+            .padding()
+        } else {
+          ForEach(family.indices, id: \.self) { idx in
+            let member = family[idx]
+            VStack(alignment: .leading, spacing: 8) {
+              // Name
+              if isEditingFamily {
+                Text("Name:")
+                  .font(.subheadline).fontWeight(.bold)
+                TextField("Name", text: $family[idx].name)
+                  .textFieldStyle(RoundedBorderTextFieldStyle())
+              } else {
+                Text(member.name)
+                  .font(.subheadline).fontWeight(.bold)
+              }
+
+              // Relation
+              if isEditingFamily {
+                Text("Relation:")
+                  .font(.subheadline).fontWeight(.bold)
+                TextField("Relation", text: $family[idx].relationship)
+                  .textFieldStyle(RoundedBorderTextFieldStyle())
+              } else {
+                InfoRow(label: "Relation", value: member.relationship)
+              }
+
+              // Email
+              if isEditingFamily {
+                Text("Email:")
+                  .font(.subheadline).fontWeight(.bold)
+                TextField("Email", text: Binding(
+                  get: { family[idx].email ?? "" },
+                  set: { family[idx].email = $0 }
+                ))
+                .keyboardType(.emailAddress)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+              } else {
+                InfoRow(label: "Email", value: member.email ?? "—")
+              }
+
+              // DOB
+              if isEditingFamily {
+                Text("DOB:")
+                  .font(.subheadline).fontWeight(.bold)
+                TextField("YYYY-MM-DD", text: Binding(
+                  get: { family[idx].dob ?? "" },
+                  set: { family[idx].dob = $0 }
+                ))
+                .placeholder(when: (family[idx].dob ?? "").isEmpty) {
+                  Text("YYYY-MM-DD").foregroundColor(.gray)
+                }
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+              } else {
+                InfoRow(label: "DOB", value: member.dob.map(formatDate) ?? "—")
+              }
+
+              // Phone
+              if isEditingFamily {
+                Text("Phone:")
+                  .font(.subheadline).fontWeight(.bold)
+                TextField("Phone", text: Binding(
+                  get: { family[idx].phone ?? "" },
+                  set: { family[idx].phone = $0 }
+                ))
+                .keyboardType(.phonePad)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+              } else {
+                InfoRow(label: "Phone", value: member.phone ?? "—")
+              }
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+            .shadow(radius: 3, y: 2)
+            .padding(.horizontal)
+          }
+        }
+      }
+    }
+
+    // MARK: – Actions
+
+    private func saveProfile() {
+        isUpdating = true
+        NetworkManager.shared.updateProfile(
+            name: editName,
+            phone: editPhone,
+            dateOfBirth: editDOB,
+            address: editAddress
+        ) { result in
+            DispatchQueue.main.async {
+                isUpdating = false
+                switch result {
+                case .success(let updated):
+                    DatabaseManager.shared.saveUser(updated)
+                    profile = updated
+                    isEditingProfile = false
+                case .failure(let err):
+                    updateErrorMessage = err.localizedDescription
+                    showErrorAlert = true
                 }
             }
         }
     }
 
-    // MARK: – Date formatting helper
+    private func saveFamily() {
+        guard let token = DatabaseManager.shared.authToken else {
+            updateErrorMessage = "Not logged in"
+            showErrorAlert = true
+            return
+        }
+        isUpdating = true
+
+        // 1) Build request
+        let url = URL(string: "https://nema-api.kanakaagro.in/api/family")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        // 2) JSON-encode your edited family array
+        let payload = ["family": family.map { member in
+            [
+                "id":           member.id,
+                "name":         member.name,
+                "relationship": member.relationship,
+                "email":        member.email ?? "",
+                "dob":          member.dob ?? "",
+                "phone":        member.phone ?? ""
+            ]
+        }]
+
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: [])
+
+        // 3) Fire it off
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            DispatchQueue.main.async { self.isUpdating = false }
+
+            if let err = err {
+                DispatchQueue.main.async {
+                    self.updateErrorMessage = err.localizedDescription
+                    self.showErrorAlert = true
+                }
+                return
+            }
+            guard let http = resp as? HTTPURLResponse else {
+                DispatchQueue.main.async {
+                    self.updateErrorMessage = "Invalid server response."
+                    self.showErrorAlert = true
+                }
+                return
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                DispatchQueue.main.async {
+                    self.updateErrorMessage = "Server error \(http.statusCode)."
+                    self.showErrorAlert = true
+                }
+                return
+            }
+
+            // success! toggle out of edit mode
+            DispatchQueue.main.async {
+                self.isEditingFamily = false
+            }
+        }
+        .resume()
+    }
+
+    // MARK: – Date formatting helpers
+
     private func formatDate(_ isoString: String) -> String {
-        // 1) Try full ISO8601 with fractional seconds
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = isoFormatter.date(from: isoString) {
             return longStyle(d)
         }
-        // 2) Try ISO8601 without fractions
         let isoNoFrac = ISO8601DateFormatter()
         isoNoFrac.formatOptions = [.withInternetDateTime]
         if let d = isoNoFrac.date(from: isoString) {
             return longStyle(d)
         }
-        // 3) Try yyyy‑MM‑dd
         let dfDay = DateFormatter()
         dfDay.dateFormat = "yyyy-MM-dd"
         if let d = dfDay.date(from: isoString) {
             return longStyle(d)
         }
-        // 4) Try yyyy‑MM → format as "MMMM yyyy"
         if isoString.count == 7, isoString.dropFirst(4).first == "-" {
             let dfMonth = DateFormatter()
             dfMonth.dateFormat = "yyyy-MM"
@@ -185,7 +404,6 @@ struct AccountView: View {
                 return out.string(from: d)
             }
         }
-        // 5) Fallback to raw
         return isoString
     }
 
@@ -197,6 +415,7 @@ struct AccountView: View {
     }
 
     // MARK: – Data Loading
+
     private func loadAllData() {
         loadLocalProfile()
         loadFamily()
@@ -241,6 +460,7 @@ struct AccountView: View {
 }
 
 // MARK: – Reusable InfoRow
+
 private struct InfoRow: View {
     let label   : String
     let value   : String
@@ -263,3 +483,4 @@ private extension Text {
         flag ? self.italic() : self
     }
 }
+

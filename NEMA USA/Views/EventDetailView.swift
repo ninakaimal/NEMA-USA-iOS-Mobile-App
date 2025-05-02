@@ -147,7 +147,11 @@ struct EventDetailView: View {
                         .padding(.top, 16)
                     } else {
                         Button(action: {
-                            if let url = URL(string: "https://www.nemausa.org/") {
+                            // use provided link if non-empty, else default
+                            let linkString = (event.eventLink?.isEmpty == false)
+                                ? event.eventLink!
+                                : "https://www.nemausa.org/events"
+                            if let url = URL(string: linkString) {
                                 UIApplication.shared.open(url)
                             }
                         }) {

@@ -16,9 +16,11 @@ struct Event: Identifiable, Decodable {
     let isTBD: Bool
     let isRegON: Bool
     let date: Date?
+    let eventLink: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, location, category, imageUrl, date, isTBD, isRegON
+        case eventLink = "eventlink"
     }
 
     init(from decoder: Decoder) throws {
@@ -32,6 +34,7 @@ struct Event: Identifiable, Decodable {
         imageUrl    = try container.decode(String.self, forKey: .imageUrl)
         isTBD       = try container.decode(Bool.self,   forKey: .isTBD)
         isRegON     = try container.decodeIfPresent(Bool.self, forKey: .isRegON) ?? false
+        eventLink   = try container.decodeIfPresent(String.self, forKey: .eventLink)
         
         // Allow "To be announced" or null to be decoded as nil
         if isTBD {
