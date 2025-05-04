@@ -1,0 +1,508 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Login</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="shortcut icon" type="image/png" href="https://test.nemausa.org/assets/front/images/fav.png"/>
+    <link rel="stylesheet" href="https://test.nemausa.org/assets/front/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://test.nemausa.org/assets/front/fonts/css/font-awesome.min.css">
+
+    <script src="https://test.nemausa.org/assets/front/js/jquery.min.js"></script>
+    <script src="https://test.nemausa.org/assets/front/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" href="https://test.nemausa.org/assets/front/css/nema-style.css">
+    <link rel="stylesheet" href="https://test.nemausa.org/assets/front/css/responsive.css">
+
+
+    <style>
+        .inner2 {
+            font-size: 16px;
+        }
+
+        html {
+            overflow: hidden;
+            height: 100%;
+        }
+
+        body {
+            height: 100%;
+            overflow: auto;
+        }
+
+        @media  only screen and (max-width: 600px) {
+            .register-right {
+                padding-top: 1px !important;
+            }
+
+            .form-group {
+                margin-bottom: 8px;
+            }
+        }
+
+
+        @media  only screen and (max-width: 600px) {
+
+            
+                
+            
+
+            .register {
+                width: 90%;
+            }
+
+        }
+
+        .register {
+            font-family: Helvetica;
+            background: rgba(132, 49, 102, 1);
+            background: -moz-linear-gradient(left, rgba(132, 49, 102, 1) 0%, rgba(225, 60, 85, 1) 100%);
+            background: -webkit-gradient(left top, right top, color-stop(0%, rgba(132, 49, 102, 1)), color-stop(100%, rgba(225, 60, 85, 1)));
+            background: -webkit-linear-gradient(left, rgba(132, 49, 102, 1) 0%, rgba(225, 60, 85, 1) 100%);
+            background: -o-linear-gradient(left, rgba(132, 49, 102, 1) 0%, rgba(225, 60, 85, 1) 100%);
+            background: -ms-linear-gradient(left, rgba(132, 49, 102, 1) 0%, rgba(225, 60, 85, 1) 100%);
+            background: linear-gradient(to right, rgba(132, 49, 102, 1) 0%, rgba(225, 60, 85, 1) 100%);
+            filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#843166', endColorstr='#e13c55', GradientType=1);
+            margin-top: 3%;
+        }
+
+        .register-left {
+            color: #fff;
+            margin-top: 10%;
+        }
+
+        .register-left input {
+            border: none;
+            /*border-radius: 1.5rem;*/
+            padding: 3%;
+            width: 100%;
+            background: #fff;
+            /*font-weight: bold;*/
+            color: #383d41;
+            /* margin-top: 30%; */
+            margin-bottom: 3%;
+            cursor: pointer;
+            font-family: Helvetica;
+        }
+
+        .register-right {
+            background: #f8f9fa;
+            padding: 3%;
+            /*border-top-left-radius: 10% 50%;*/
+            /*border-bottom-left-radius: 10% 50%;*/
+        }
+
+        .register-left img {
+            margin-top: 15%;
+            margin-bottom: 5%;
+            width: 25%;
+            -webkit-animation: mover 2s infinite alternate;
+            animation: mover 1s infinite alternate;
+        }
+
+        @-webkit-keyframes mover {
+            0% {
+                transform: translateY(0);
+            }
+            100% {
+                transform: translateY(-20px);
+            }
+        }
+
+        @keyframes  mover {
+            0% {
+                transform: translateY(0);
+            }
+            100% {
+                transform: translateY(-20px);
+            }
+        }
+
+        .register-left p {
+            font-weight: lighter;
+            padding: 2%;
+            /* margin-top: -9%; */
+        }
+
+        .register .register-form {
+            padding: 5%;
+            margin-top: 0%;
+        }
+
+        .btnRegister {
+            float: right;
+            margin-top: 10%;
+            border: none;
+            /*border-radius: 1.5rem;*/
+            padding: 2%;
+            background: #d62f80;
+            color: #fff;
+            font-weight: 700;
+            width: 50%;
+            cursor: pointer;
+        }
+
+        .btnLogin {
+            margin-top: 5%;
+            padding: 2%;
+            background: #eb5118;
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .register .nav-tabs {
+            margin-top: 3%;
+            border: none;
+            background: #eb5118;
+            border-radius: 1.5rem;
+            width: 28%;
+            float: right;
+        }
+
+        .register .nav-tabs .nav-link {
+            padding: 2%;
+            height: 34px;
+            font-weight: 600;
+            color: #fff;
+            border-top-right-radius: 1.5rem;
+            border-bottom-right-radius: 1.5rem;
+        }
+
+        .register .nav-tabs .nav-link:hover {
+            border: none;
+        }
+
+        .register .nav-tabs .nav-link.active {
+            width: 100px;
+            color: #0062cc;
+            border: 2px solid #0062cc;
+            border-top-left-radius: 1.5rem;
+            border-bottom-left-radius: 1.5rem;
+        }
+
+        .register-heading {
+            text-align: center;
+            margin-bottom: 0px;
+            margin-top: 10%;
+            color: #495057;
+        }
+
+        .menu-fix {
+            top: 0;
+        }
+
+        .reduce-logo {
+            top: 0;
+        }
+
+        @media  only screen and (max-width: 600px) {
+            .btnRegister {
+                margin-top: 1%;
+            }
+
+            .register .register-form {
+                padding-top: 0%;
+                padding-bottom: 0%;
+                padding-right: 3%;
+                padding-left: 5%;
+                margin-top: 0%;
+            }
+        }
+    </style>
+</head>
+<body>
+<script>
+    window.onpageshow = function (event) {
+        if (event.persisted || window.performance.navigation.type === 2) {
+            // document.getElementById('customCheck').removeAttribute('checked');
+            // loader.style.display = "none";
+            window.location.reload();
+        }
+    };
+</script>
+<!--menu start--->
+<div class="mobile-fixed-top-logo">
+    <div class="mob-top-logo">
+        <a href="https://test.nemausa.org"><img src="https://test.nemausa.org/assets/front/images/nema-images/logo_header_150px.png" alt=""/></a>
+    </div>
+</div>
+
+<div class="menu-fix">
+    <div class="new-top">
+        <div class="new-top-logo">
+            <a href="https://test.nemausa.org"><img src="https://test.nemausa.org/assets/front/images/nema-images/logo_header_150px.png"
+                                          alt=""/></a>
+        </div>
+        <div class="new-heading-texts">
+            <h3>New England Malayalee Association
+                <span style="color: #444;" class="hide-mobile">Boston USA</span>
+            </h3>
+            <h6>ന്യൂ ഇംഗ്ലണ്ട് മലയാളി അസോസിയേഷൻ‍</h6>
+        </div>
+        <div class="new-social-media">
+            <ul>
+
+                <li><a href="https://www.facebook.com/BostonMalayalees/" target="_blank"><i class="fa fa-facebook"
+                                                                                            aria-hidden="true"></i></a>
+                </li>
+                <li><a href="https://www.youtube.com/@nemausaboston" target="_blank"> <i
+                                class="fa fa-youtube"
+                                aria-hidden="true"></i></a>
+                </li>
+                <li><a href="https://instagram.com/nema.usa?igshid=Yzg5MTU1MDY=" target="_blank"> <i
+                                class="fa fa-instagram"></i></a></li>
+                <li style="padding-bootom: 30px"><a target="_blank" href="https://twitter.com/nemausa/"><i
+                                class="fa fa-twitter" aria-hidden="true"></i></a></li>
+            </ul>
+        </div>
+
+    </div>
+    <nav class="navbar navbar-expand-md menu-tp-5">
+        <!-- Toggler/collapsibe Button -->
+        <div class="navbar-toggler" data-toggle="collapse" data-target="#collapsibleNavbar"><span
+                    class="navbar-toggler-icon"><img alt=""
+                                                     src="https://test.nemausa.org/assets/front/images/main/hamburger_icon.svg"/></span>
+        </div>
+        <ul class="socials-inline-block socials-view mob-show">
+
+            <li><a href="https://www.facebook.com/BostonMalayalees/" target="_blank"><i class="fa fa-facebook"
+                                                                                        aria-hidden="true"></i></a></li>
+            <li><a href="https://www.youtube.com/@nemausaboston" target="_blank"> <i
+                            class="fa fa-youtube"
+                            aria-hidden="true"></i></a>
+            </li>
+            <li><a href="https://instagram.com/nema.usa?igshid=Yzg5MTU1MDY=" target="_blank"> <i
+                            class="fa fa-instagram"></i></a></li>
+            <li style="padding-bootom: 30px"><a target="_blank" href="https://twitter.com/nemausa/"><i
+                            class="fa fa-twitter" aria-hidden="true"></i></a></li>
+        </ul>
+
+        <div class="new-menu-bar">
+
+            <div class="col-md-12 col-lg-12 col-sm-12 position-relative">
+                <!-- Navbar links -->
+                <div class="collapse navbar-collapse pl-3" id="collapsibleNavbar">
+                    <ul class="navbar-nav mx-auto"> 
+
+                        <li class="nav-item"><a class="nav-link pl-0" href="https://test.nemausa.org">Home</a></li>
+
+                        <li class="nav-item"><a class="nav-link" href="https://test.nemausa.org/events">Events</a></li>
+                        <li class="nav-item dropdown"><a href="#" class="nav-link dropdown-toggle"
+                                                         data-toggle="dropdown">Drishya</a>
+                            <div class="dropdown-menu">
+                                                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=132">Drishya - International</a>
+                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=124">Drishya - 2021</a>
+                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=107">Drishya - 2020</a>
+                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=50">Drishya - 2019</a>
+                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=43">Drishya - 2018</a>
+                                                                            <a class="dropdown-item"
+                                           href="https://test.nemausa.org/drishya?id=37">Drishya - 2017</a>
+                                                                                                </div>
+                        </li>
+                        <li class="nav-item"><a class="nav-link" href="https://test.nemausa.org/event_details?id=6">Sports</a>
+                        </li>
+                        <li class="nav-item"><a class="nav-link" href="https://test.nemausa.org/movies">Movies</a></li>
+                                                <li class="nav-item"><a class="nav-link" href="https://test.nemausa.org/donate_event">Donate</a></li>
+                        <li class="nav-item"><a class="nav-link" href="https://test.nemausa.org/about_us">About Us</a></li>
+                        
+                                                <li class="nav-item  active" style="right:0">
+                                                            <a class="nav-link small-a"
+                                   href="https://test.nemausa.org/sign_in_form">Sign In</a>
+                                                    </li>
+                    </ul>
+
+                </div>
+
+            </div>
+        </div>
+    </nav>
+
+
+</div>
+
+<!--end menu---------------------------->
+
+<!---------------------------------end header------------------------------------->
+
+<section class="top-botom-0">
+    <div class="container-land register pt-4 pb-4 padding-right-1">
+        <div class="row">
+            <div class="col-md-4 register-left">
+                
+                <div class="register-form" style="font-family: Helvetica; color: white">
+                    <h3 class="text-center" style="width:100%">Login to Your Account</h3><br/>
+                    <ul class="mt-2">
+                        <li>
+                            Track event registrations
+                        </li>
+                        <li>Track ticket purchases
+                        </li>
+                        <li>Save informations of family members and make event registrations easy</li>
+                        
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-8 register-right">
+                <div class="tab-content" id="myTabContent">
+                    <div class="col-md-12" style="text-align: right; padding-right: 2%">
+                        <label>Not registered?</label><a style="color: #eb5118" href="https://test.nemausa.org/membership_form">
+                            Sign Up</a></div>
+                    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
+                        <h3 class="register-heading">Login</h3>
+                    </div>
+                </div>
+                                    <div class="alert alert-info">please login to continue</div>
+                                <form action="https://test.nemausa.org/user_login" method="post">
+                    <input type="hidden" name="_token" value="Q8hE7bb6OkZF68yHcyXlAb7zC9Lz0eE5uCBgOOEp">
+                    <div class="register-form">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>
+                                    <input type="email" class="form-control"
+                                           placeholder="Email *" value=""
+                                           name="email" required/></label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="password" class="form-control" placeholder="Password *" value=""
+                                           name="password" required/></label>
+                                <a style="font-size: 14px;color: #ec581f; font-family: Helvetica;"
+                                   href="https://test.nemausa.org/user/reset/password">Forgot
+                                    Password/Reset Password</a>
+                            </div>
+                            <div class="form-group">
+                                <div class="custom-control-1 custom-checkbox">
+
+                                    <input type="checkbox" class="custom-control-input" id="customRadio1"
+                                           name="remember_me">
+                                    <label class="custom-control-label" for="customRadio1">Remember Me</label>
+                                </div>
+                            </div>
+                                                            <input type="hidden" name="previous" value="https://test.nemausa.org/fmly_mmbr">
+                                                        <input type="submit" class="btnRegister" value="Login"/>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+﻿<script>
+    var srcUrl = 'https://test.nemausa.org/assets/front/images/nema-images/load.gif';
+</script>
+<section id="footer" class="bg-extra-dark-gray response-img">
+    <div class="bg-black pt-5">
+
+    </div>
+    <div class="container-shrink response-img">
+        <div class="row pt-2 footer-wrap">
+            <div class="col-md-4 col-sm-12 no-gutter pt-3">
+                <div class="widget-title alt-font text-small text-medium-gray text-uppercase margin-15px-bottom font-weight-600">
+                    Subscribe Newsletter
+                </div>
+                <p class="text-small width-90 xs-width-100 mt-3">The great way to stay updated!
+                    Join NEMA Email Contact List.<br/> Be in the loop of community events.</p>
+
+            </div>
+            <div class="col-md-4 col-sm-1 pt-3">
+                
+                      
+                    
+                    
+                        
+                               
+                        
+                        
+                                    
+                    
+                
+                <form form method="post" action="http://oi.vresp.com?fid=3351dd212a" target="vr_optin_popup"
+                      onsubmit="window.open( 'http://www.verticalresponse.com', 'vr_optin_popup', 'scrollbars=yes,width=600,height=450' ); return true;">
+                    <input type="hidden" name="_token" value="Q8hE7bb6OkZF68yHcyXlAb7zC9Lz0eE5uCBgOOEp">
+                    <div class="b-flex newsletter">
+                        <input type="email" id="email" class="bg-transparent text-small no-margin"
+                               placeholder="Enter your email..." name="email_address" required>
+                        <input type="hidden" value="true" name="status">
+                        <button type="submit" class="btn-arrow-small align-self-center"><i
+                                    class="fa fa-caret-right no-margin-left"></i></button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-4 col-sm-12 no-gutter pt-3">
+                <div class="widget-title alt-font text-small text-medium-gray text-uppercase margin-20px-bottom font-weight-600">
+                    Follow us on Facebook
+                </div>
+                <div class="instagram-follow-api mt-3">
+                    <div class="b-flex">
+                        <figure><a href="https://www.facebook.com/BostonMalayalees/" target="_blank"> <img alt=""
+                                        src="https://test.nemausa.org/assets/front/images/footer/1.jpg"
+                                        class="insta-image"> <span class="insta-counts"> <i class="ti-heart"></i> <span>13</span> </span>
+                            </a></figure>
+                        <figure class="ml-3">
+                            <a href="https://www.facebook.com/BostonMalayalees/" target="_blank">
+                                <img src="https://test.nemausa.org/assets/front/images/footer/5.jpg" alt=""
+                                     class="insta-image"> <span class="insta-counts"><i
+                                            class="ti-heart"></i> <span>1</span></span> </a></figure>
+                        <figure class="ml-3">
+                            <a href="https://www.facebook.com/BostonMalayalees/" target="_blank"> <img alt=""
+                                        src="https://test.nemausa.org/assets/front/images/footer/6.jpg"
+                                        class="insta-image"> <span class="insta-counts"> <i
+                                            class="ti-heart"></i><span>2</span> </span>
+                            </a></figure>
+
+                        <figure class="ml-3">
+                            <a href="https://www.facebook.com/BostonMalayalees/" target="_blank">
+                                <img src="https://test.nemausa.org/assets/front/images/footer/4.jpg" alt=""
+                                     class="insta-image"> <span class="insta-counts"><i
+                                            class="ti-heart"></i><span>4</span> </span> </a></figure>
+                        <figure class="ml-3">
+                            <a href="https://www.facebook.com/BostonMalayalees/" target="_blank">
+                                <img src="https://test.nemausa.org/assets/front/images/footer/4.jpg" alt=""
+                                     class="insta-image"> <span class="insta-counts"><i
+                                            class="ti-heart"></i><span>4</span> </span> </a></figure>
+                        <figure class="ml-3">
+                            <a href="https://www.facebook.com/BostonMalayalees/" target="_blank"> <img alt=""
+                                        src="https://test.nemausa.org/assets/front/images/footer/1.jpg"
+                                        class="insta-image"> <span class="insta-counts"><i
+                                            class="ti-heart"></i><span>5</span></span> </a></figure>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <div class="row footer-wrap">
+            <div class="col-md-12  border-top"></div>
+
+        </div>
+    </div>
+    <div class="container-shrink  border-color-medium-dark-gray">
+        <div class="footer-bottom  padding-10px-top no-gutter">
+            <div class="row pt-3 pb-3 footer-wrap">
+
+                <!-- start copyright -->
+                <div class="no-gutter col-md-6 col-sm-6 col-xs-12 text-left text-small xs-text-center footer-wrap">©
+                    Copyright
+                    2019. New England Malayalee Association Boston USA
+                </div>
+                <div class="no-gutter col-md-6 col-sm-6 col-xs-12 text-right text-small xs-text-center"><a
+                            href="http://www.xorbium.com" target="_blank" class="xo"><span style="font-size: 10px;">Powered by</span>
+                        X-Orbium Technologies</a></div>
+                <!-- end copyright -->
+            </div>
+        </div>
+    </div>
+</section>
+<link rel="stylesheet" href="https://test.nemausa.org/assets/front/css/responsive.css">
+
+
+    </body>
+    </html>
+
+<script src="https://test.nemausa.org/assets/front/js/menu-fix.js"></script>
+</body>
+</html>
