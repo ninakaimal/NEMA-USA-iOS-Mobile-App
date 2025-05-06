@@ -1,12 +1,18 @@
-// LoginView.swift
-// NEMA USA
-// Created by Nina on 4/12/25.
-// Updated by Sajith on 4/24/25
+//
+//  LoginView.swift
+//  NEMA USA
+//  Created by Nina on 4/12/25.
+//  Updated by Sajith on 4/24/25
+//  Updated by Arjun on 5/05/25 switch to nemausa.org
+//
 
 import SwiftUI
 
 struct LoginView: View {
-    @AppStorage("authToken") private var authToken: String?
+    @Environment(\.presentationMode) private var presentationMode
+
+    /// where we store the Laravel scraping session token
+    @AppStorage("laravelSessionToken") private var authToken: String?
 
     @State private var email        = ""
     @State private var password     = ""
@@ -15,10 +21,7 @@ struct LoginView: View {
     @State private var alertTitle   = ""
     @State private var alertMessage = ""
 
-    // Hold onto a successful login until the user taps OK
-    @State private var pendingLogin: (token: String, user: UserProfile)?
-
-    // Logo animation
+    // Logo animation state
     @State private var logoScale      : CGFloat = 1.4
     @State private var logoTopPadding : CGFloat = 200
     @State private var logoOpacity    : Double  = 0
@@ -26,7 +29,7 @@ struct LoginView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Logo
+                // MARK: Logo
                 Image("LaunchLogo")
                     .resizable()
                     .scaledToFit()
@@ -42,7 +45,7 @@ struct LoginView: View {
                         }
                     }
 
-                // Titles
+                // MARK: Titles
                 Text("NEW ENGLAND MALAYALEE ASSOCIATION")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.orange)
@@ -54,7 +57,7 @@ struct LoginView: View {
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 40)
 
-                // Email Field
+                // MARK: Email Field
                 TextField("", text: $email)
                     .placeholder(when: email.isEmpty) {
                         Text("Email")
@@ -66,13 +69,11 @@ struct LoginView: View {
                     .disableAutocorrection(true)
                     .padding(12)
                     .background(Color.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange, lineWidth: 0.5)
-                    )
+                    .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.orange, lineWidth: 0.5))
                     .padding(.horizontal)
 
-                // Password Field
+                // MARK: Password Field
                 SecureField("", text: $password)
                     .placeholder(when: password.isEmpty) {
                         Text("Password")
@@ -83,13 +84,11 @@ struct LoginView: View {
                     .autocapitalization(.none)
                     .padding(12)
                     .background(Color.white)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange, lineWidth: 0.5)
-                    )
+                    .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.orange, lineWidth: 0.5))
                     .padding(.horizontal)
 
-                // Login Button
+                // MARK: Login Button
                 Button(action: performLogin) {
                     HStack {
                         Spacer()
@@ -109,7 +108,7 @@ struct LoginView: View {
                 .padding(.horizontal)
                 .disabled(isLoading)
 
-                // Footer
+                // MARK: Footer
                 Text("© NEMA Boston, All rights reserved.")
                     .font(.footnote)
                     .foregroundColor(.gray.opacity(0.7))
@@ -122,60 +121,86 @@ struct LoginView: View {
         .ignoresSafeArea(.keyboard)
         .alert(isPresented: $showAlert) {
             Alert(
-                title: Text(alertTitle),
+                title:   Text(alertTitle),
                 message: Text(alertMessage),
-                dismissButton: .default(Text("OK")) {
-                    // Only commit on success
-                    if let login = pendingLogin {
-                        DatabaseManager.shared.saveUser(login.user)
-                        DatabaseManager.shared.saveToken(login.token)
-                        authToken = login.token
-                        pendingLogin = nil
-                    }
-                }
+                dismissButton: .default(Text("OK"))
             )
         }
     }
 
     private func performLogin() {
-        // 1) Validate inputs
+        // 0) Validate
         guard !email.isEmpty, !password.isEmpty else {
             alertTitle   = "Missing Info"
             alertMessage = "Please enter both email and password."
-            pendingLogin = nil
             showAlert    = true
             return
         }
 
+        // 1) Start spinner
         isLoading = true
+        print("🔄 [LoginView] Starting login for email: \(email)")
 
-        // 2) Attempt login
-        NetworkManager.shared.login(email: email, password: password) { result in
-            DispatchQueue.main.async { isLoading = false }
+        // 2) Scrape Laravel login → get session + profile
+        NetworkManager.shared.login(email: email, password: password) { scrapeResult in
+            switch scrapeResult {
+            case let .success((laravelToken, user)):
+                print("✅ [LoginView] Laravel scrape succeeded, token: \(laravelToken)")
+                print("ℹ️ [LoginView] User profile: \(user)")
 
-            switch result {
-            case let .success((token, user)):
-                // Defer commit until OK
-                pendingLogin = (token, user)
-                alertTitle   = "Welcome, \(user.name)!"
-                alertMessage = "You have successfully logged in."
-                showAlert    = true
-                // Clear form
-                email    = ""
-                password = ""
+                // 2a) Save scraped profile & session
+                DatabaseManager.shared.saveUser(user)
+                DatabaseManager.shared.saveLaravelSessionToken(laravelToken)
+                authToken = laravelToken
+                print("💾 [LoginView] Stored laravelSessionToken in AppStorage")
+
+                // 3) Fetch JSON-API JWT
+                NetworkManager.shared.loginJSON(email: email, password: password) { jwtResult in
+                    DispatchQueue.main.async {
+                        // stop spinner
+                        isLoading = false
+
+                        switch jwtResult {
+                        case let .success((jwt, _)):
+                            print("🔐 [LoginView] got JWT = \(jwt)")
+                            DatabaseManager.shared.saveJwtApiToken(jwt)
+                        case let .failure(err):
+                            print("⚠️ [LoginView] Couldn't fetch JSON-API token:", err)
+                        }
+
+                        // 4) Finally dismiss the login sheet
+                        print("🚪 [LoginView] Dismissing login sheet")
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
 
             case let .failure(error):
-                pendingLogin = nil
-                alertTitle   = "Login Failed"
-                alertMessage = {
+                DispatchQueue.main.async {
+                    // stop spinner & report
+                    isLoading = false
+                    let msg: String
                     switch error {
-                    case .serverError(let msg): return msg
-                    case .invalidResponse:       return "Server error—please try again."
-                    case .decodingError:         return "Bad data from server."
+                    case .serverError(let m):
+                        msg = m
+                        print("❌ [LoginView] serverError:", m)
+                    case .invalidResponse:
+                        msg = "Server error—please try again."
+                        print("❌ [LoginView] invalidResponse")
+                    case .decodingError:
+                        msg = "Bad data from server."
+                        print("❌ [LoginView] decodingError:", error)
                     }
-                }()
-                showAlert = true
+                    alertTitle   = "Login Failed"
+                    alertMessage = msg
+                    showAlert    = true
+                }
             }
         }
+    }
+}
+
+struct LoginView_Previews: PreviewProvider {
+    static var previews: some View {
+        LoginView()
     }
 }

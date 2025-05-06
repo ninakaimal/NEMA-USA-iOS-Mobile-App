@@ -5,23 +5,48 @@
 
 import Foundation
 
-/// A simple wrapper around UserDefaults to persist auth tokens, refresh tokens and the current user profile.
+/// A simple wrapper around UserDefaults to persist two distinct auth tokens
+/// (Laravel scraping session & JSON API JWT), refresh tokens, the current
+/// user profile, and the family list.
 final class DatabaseManager {
     static let shared = DatabaseManager()
     private init() {}
-
     private let defaults         = UserDefaults.standard
     private let tokenKey         = "authToken"
-    private let refreshTokenKey  = "refreshToken"
-    private let userKey          = "currentUser"
 
-    // MARK: – Auth Token
+    // Key for Laravel (HTML-scraping) session token
+    private let laravelSessionKey      = "laravelSessionToken"
+    // Key for JSON-API JWT token
+    private let jwtApiTokenKey         = "jwtApiToken"
 
-    func saveToken(_ token: String) {
-        defaults.set(token, forKey: tokenKey)
+    // Key for refresh token (JSON API)
+    private let refreshTokenKey        = "refreshToken"
+    // Key for cached UserProfile
+    private let userKey                = "currentUser"
+    // Key for cached family list
+    private let familyKey              = "familyList"
+
+
+    // MARK: – Laravel scraping session token
+
+    /// Store the Laravel session token (e.g. "LARAVEL_SESSION")
+    func saveLaravelSessionToken(_ token: String) {
+        defaults.set(token, forKey: laravelSessionKey)
     }
-    var authToken: String? {
-        defaults.string(forKey: tokenKey)
+    /// Retrieve the Laravel session token
+    var laravelSessionToken: String? {
+        defaults.string(forKey: laravelSessionKey)
+    }
+
+    // MARK: – JSON API JWT token
+
+    /// Store the JWT issued by your JSON backend
+    func saveJwtApiToken(_ token: String) {
+        defaults.set(token, forKey: jwtApiTokenKey)
+    }
+    /// Retrieve the JWT for JSON API calls (PayPal endpoints, etc.)
+    var jwtApiToken: String? {
+        defaults.string(forKey: jwtApiTokenKey)
     }
 
     // MARK: – Refresh Token
@@ -33,28 +58,44 @@ final class DatabaseManager {
         defaults.string(forKey: refreshTokenKey)
     }
 
-    func clearSession() {
-        defaults.removeObject(forKey: tokenKey)
-        defaults.removeObject(forKey: refreshTokenKey)
-        defaults.removeObject(forKey: userKey)
-    }
-
     // MARK: – Current UserProfile
 
-    /// Persist the current UserProfile
     func saveUser(_ profile: UserProfile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
         defaults.set(data, forKey: userKey)
     }
-
-    /// Retrieve the current UserProfile (if any)
     var currentUser: UserProfile? {
         guard
-            let data = defaults.data(forKey: userKey),
+            let data    = defaults.data(forKey: userKey),
             let profile = try? JSONDecoder().decode(UserProfile.self, from: data)
-        else {
-            return nil
-        }
+        else { return nil }
         return profile
+    }
+
+    // MARK: – Family List Persistence
+
+    /// Persist the current family array
+    func saveFamily(_ members: [FamilyMember]) {
+        guard let data = try? JSONEncoder().encode(members) else { return }
+        defaults.set(data, forKey: familyKey)
+    }
+    /// Retrieve the cached family array (if any)
+    var currentFamily: [FamilyMember]? {
+        guard
+            let data    = defaults.data(forKey: familyKey),
+            let members = try? JSONDecoder().decode([FamilyMember].self, from: data)
+        else { return nil }
+        return members
+    }
+
+    // MARK: – Clear All Session Data
+
+    /// Remove all stored session tokens, profile, and family data
+    func clearSession() {
+        defaults.removeObject(forKey: laravelSessionKey)
+        defaults.removeObject(forKey: jwtApiTokenKey)
+        defaults.removeObject(forKey: refreshTokenKey)
+        defaults.removeObject(forKey: userKey)
+        defaults.removeObject(forKey: familyKey)
     }
 }

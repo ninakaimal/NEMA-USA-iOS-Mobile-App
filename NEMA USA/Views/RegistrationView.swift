@@ -8,7 +8,7 @@ import SwiftUI
 
 struct RegistrationView: View {
   @Environment(\.presentationMode) private var presentationMode
-  @AppStorage("authToken") private var authToken: String?
+  @AppStorage("laravelSessionToken") private var authToken: String?
 
   @State private var name            = ""
   @State private var phone           = ""

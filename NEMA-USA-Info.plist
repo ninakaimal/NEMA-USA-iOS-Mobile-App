@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+
+    <!-- App icons -->
     <key>CFBundleIcons</key>
     <dict>
         <key>CFBundlePrimaryIcon</key>
@@ -11,38 +14,59 @@
         </dict>
     </dict>
 
+    <!-- Background modes -->
     <key>UIBackgroundModes</key>
     <array>
         <string>remote-notification</string>
     </array>
 
+    <!-- Launch storyboard -->
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
 
+    <!-- Notification permission text -->
     <key>NSUserNotificationUsageDescription</key>
     <string>We’d like to send you event reminders and NEMA updates.</string>
 
-    <!-- Remove your old Scheme/Host keys and insert this: -->
+    <!-- App Transport Security: allow HTTP to your API hosts -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>nema-api.kanakaagro.in</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+            <key>test.nemausa.org</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+                <key>NSExceptionMinimumTLSVersion</key>
+                <string>TLSv1.0</string>
+            </dict>
+        </dict>
+    </dict>
+
+    <!-- Custom URL scheme for PayPal return -->
     <key>CFBundleURLTypes</key>
     <array>
-      <dict>
-        <!-- An identifier; can be your bundle id -->
-        <key>CFBundleURLName</key>
-        <string>com.your.bundle</string>
-
-        <!-- The scheme(s) your app handles -->
-        <key>CFBundleURLSchemes</key>
-        <array>
-          <string>com.your.bundle</string>
-        </array>
-
-        <!-- The hosts you want to catch -->
-        <key>CFBundleURLHosts</key>
-        <array>
-          <string>paypalpay</string>
-          <string>paypalcancel</string>
-        </array>
-      </dict>
+        <dict>
+            <!-- Reverse-DNS identifier for this URL type -->
+            <key>CFBundleURLName</key>
+            <string>com.nemausa.app</string>
+            <!-- Schemes your app will handle -->
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>nemausa</string>
+            </array>
+        </dict>
     </array>
 
 </dict>

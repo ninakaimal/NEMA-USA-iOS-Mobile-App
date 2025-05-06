@@ -8,7 +8,7 @@ import SwiftUI
 
 struct ContentView: View {
     // 1) Watch the token key so we know when login completes
-    @AppStorage("authToken") private var authToken: String?
+    @AppStorage("laravelSessionToken") private var authToken: String?
     // 2) Track which tab is visible
     @State private var selectedTab = 0
 

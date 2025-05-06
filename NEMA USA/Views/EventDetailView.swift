@@ -175,4 +175,3 @@ struct EventDetailView: View {
         .accentColor(.white)  // ensure back‐button & nav‐tint stay white
     }
 }
-
