@@ -276,11 +276,11 @@ struct AccountView: View {
 
     private func saveProfile() {
         isUpdating = true
-                NetworkManager.shared.updateProfile(
-                    name:    editName,
-                    phone:   editPhone,
-                    address: editAddress
-                ) { result in
+        NetworkManager.shared.updateProfile(
+            name:    editName,
+            phone:   editPhone,
+            address: editAddress
+        ) { result in
             DispatchQueue.main.async {
                 isUpdating = false
                 switch result {
@@ -288,6 +288,12 @@ struct AccountView: View {
                     DatabaseManager.shared.saveUser(updated)
                     profile = updated
                     isEditingProfile = false
+                    
+                    // ✅ Update UserDefaults explicitly
+                    UserDefaults.standard.setValue(updated.name, forKey: "memberName")
+                    UserDefaults.standard.setValue(updated.email, forKey: "emailAddress")
+                    UserDefaults.standard.setValue(updated.phone, forKey: "phoneNumber")
+
                 case .failure(let err):
                     updateErrorMessage = err.localizedDescription
                     showErrorAlert = true

@@ -2,7 +2,9 @@
 //  PaymentManager.swift
 //  NEMA USA
 //
-////  Created by Sajith on 5/5/25.
+//  Created by Sajith on 5/5/25.
+//  Updated with correct PayPal route integration
+//
 
 import Foundation
 
@@ -12,153 +14,191 @@ enum PaymentError: Error {
   case parseError(String)
 }
 
-private struct CreateOrderResponse: Decodable {
-  let orderID: String
-  let approveUrl: String
-}
-
 final class PaymentManager: NSObject {
   static let shared = PaymentManager()
   private override init() {}
 
-  /// point at your JSON-API server
-  private let baseURL = URL(string: "https://nema-api.kanakaagro.in")!
+  private var createOrderCallback: ((Result<URL,PaymentError>) -> Void)?
+
+  private let baseURL = URL(string: "https://test.nemausa.org")!
 
   private lazy var session: URLSession = {
     let cfg = URLSessionConfiguration.default
-    return URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+    cfg.httpCookieAcceptPolicy = .always
+    cfg.httpCookieStorage     = HTTPCookieStorage.shared
+    return URLSession(configuration: cfg,
+                      delegate: self,
+                      delegateQueue: nil)
   }()
 
-  /// 1) Create a PayPal order and return the approve URL
-  func createOrder(
-    amount: String,
-    currency: String = "USD",
-    completion: @escaping (Result<URL, PaymentError>) -> Void
-  ) {
-    let url = baseURL.appendingPathComponent("api/create-paypal-order")
-    var req = URLRequest(url: url)
-    req.httpMethod = "POST"
-    req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    // Add this helper function INSIDE your PaymentManager class
+    func fetchInitialCookies(completion: @escaping (Bool) -> Void) {
+        var components = URLComponents(url: baseURL.appendingPathComponent("buy_ticket"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "id", value: "160")]
+        
+        guard let initialURL = components.url else {
+            print("❌ URL creation failed")
+            completion(false)
+            return
+        }
 
-    // **include your JWT**
-    if let jwt = DatabaseManager.shared.jwtApiToken {
-      print("🔑 [PaymentManager] createOrder sending JWT: \(jwt)")
-      req.addValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-    } else {
-      print("⚠️ [PaymentManager] createOrder NO JWT found!")
+        var initialRequest = URLRequest(url: initialURL)
+        initialRequest.httpMethod = "GET"
+        
+        // Critical browser-like headers
+        initialRequest.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        initialRequest.setValue("en-US,en;q=0.5", forHTTPHeaderField: "Accept-Language")
+        initialRequest.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        initialRequest.setValue("test.nemausa.org", forHTTPHeaderField: "Host")
+        initialRequest.setValue("https://test.nemausa.org", forHTTPHeaderField: "Referer")
+        initialRequest.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+
+        session.dataTask(with: initialRequest) { data, response, error in
+            guard error == nil,
+                  let http = response as? HTTPURLResponse,
+                  (200..<400).contains(http.statusCode) else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no response>"
+                print("❌ Initial cookie fetch failed. Status Code: \(statusCode), Response: \(responseBody), Error: \(error?.localizedDescription ?? "Unknown Error")")
+                completion(false)
+                return
+            }
+
+            print("✅ Initial cookie fetch succeeded, status code: \(http.statusCode)")
+            completion(true)
+        }.resume()
     }
 
-    req.httpBody = try? JSONSerialization.data(
-      withJSONObject: ["amount": amount, "currency": currency],
-      options: []
-    )
+  // MARK: — 1) Create a PayPal order
 
-    session.dataTask(with: req) { data, resp, err in
-      if let e = err {
-        return DispatchQueue.main.async {
-          completion(.failure(.serverError(e.localizedDescription)))
-        }
-      }
-      // must be HTTP
-      guard let http = resp as? HTTPURLResponse else {
-        print("⚠️ [PaymentManager] createOrder non-HTTP response:", resp ?? "nil")
-        return DispatchQueue.main.async {
-          completion(.failure(.invalidResponse))
-        }
-      }
-      // non-2xx? log status + body
-      guard (200..<300).contains(http.statusCode) else {
-        let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-        print("⚠️ [PaymentManager] createOrder HTTP \(http.statusCode) →", bodyText)
-        return DispatchQueue.main.async {
-          completion(.failure(.invalidResponse))
-        }
-      }
-      // data must exist
-      guard let d = data else {
-        print("⚠️ [PaymentManager] createOrder HTTP \(http.statusCode) but no data")
-        return DispatchQueue.main.async {
-          completion(.failure(.invalidResponse))
-        }
-      }
+    func createOrder(
+        amount: String,
+        eventTitle: String,
+        completion: @escaping (Result<URL, PaymentError>) -> Void
+    ) {
+        fetchInitialCookies { success in
+            guard success else {
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("Failed to fetch initial cookies")))
+                }
+                return
+            }
 
-      // decode
-      do {
-        let decoded = try JSONDecoder().decode(CreateOrderResponse.self, from: d)
-        guard let approval = URL(string: decoded.approveUrl) else {
-          return DispatchQueue.main.async {
-            completion(.failure(.parseError("Invalid approveUrl")))
-          }
+            let url = self.baseURL.appendingPathComponent("generic_payment")
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.addValue("application/json", forHTTPHeaderField: "Accept")
+
+            if let cookie = HTTPCookieStorage.shared.cookies?.first(where: { $0.name == "XSRF-TOKEN" }),
+               let token = cookie.value.removingPercentEncoding {
+                req.addValue(token, forHTTPHeaderField: "X-XSRF-TOKEN")
+            }
+
+            let payload: [String: Any] = [
+                "type": "ticket",
+                "returnUrl": "https://test.nemausa.org/payment_status",
+                "id": 0,
+                "event_id": 160,
+                "item": "\(eventTitle) Tickets",
+                "amount": amount,
+                "description": "Ticket purchase for \(eventTitle) event"
+            ]
+
+            req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+            self.session.dataTask(with: req) { data, resp, err in
+                if let e = err {
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError(e.localizedDescription)))
+                    }
+                    return
+                }
+
+                guard let http = resp as? HTTPURLResponse, let d = data, (200..<400).contains(http.statusCode) else {
+                    DispatchQueue.main.async {
+                        completion(.failure(.invalidResponse))
+                    }
+                    return
+                }
+
+                // Parse JSON here instead of looking for a Location header
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: d) as? [String: Any],
+                       let flowExecutionUrl = json["flowExecutionUrl"] as? String {
+                        
+                        let approvalUrlString = "https://www.sandbox.paypal.com\(flowExecutionUrl)"
+                        if let approvalURL = URL(string: approvalUrlString) {
+                            print("✅ [PaymentManager] Parsed PayPal approval URL:", approvalURL)
+                            DispatchQueue.main.async {
+                                completion(.success(approvalURL))
+                            }
+                        } else {
+                            throw PaymentError.parseError("Malformed URL")
+                        }
+                    } else {
+                        throw PaymentError.parseError("Missing 'flowExecutionUrl'")
+                    }
+                } catch {
+                    let body = String(data: d, encoding: .utf8) ?? "<no body>"
+                    print("⚠️ [PaymentManager] JSON parse failed:", error)
+                    print("Body:", body)
+                    DispatchQueue.main.async {
+                        completion(.failure(.parseError("Failed to parse response: \(error.localizedDescription)")))
+                    }
+                }
+            }.resume()
         }
-        print("✅ [PaymentManager] createOrder got approval URL:", approval)
-        DispatchQueue.main.async {
-          completion(.success(approval))
-        }
-      } catch {
-        print("⚠️ [PaymentManager] createOrder parse error:", error)
-        DispatchQueue.main.async {
-          completion(.failure(.parseError(error.localizedDescription)))
-        }
-      }
     }
-    .resume()
-  }
 
-  /// 2) Capture the order once PayPal redirects you back
+
+  // MARK: — 2) Capture the order
+
   func captureOrder(
-    orderID:   String,
-    amount:    String,
-    approveUrl: String,
+    paymentId: String,
+    payerId:   String,
     completion: @escaping (Result<Void, PaymentError>) -> Void
   ) {
-    let url = baseURL.appendingPathComponent("api/capture-paypal-order")
-    var req = URLRequest(url: url)
-    req.httpMethod = "POST"
-    req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    // **include your JWT**
-    if let jwt = DatabaseManager.shared.jwtApiToken {
-      print("🔑 [PaymentManager] captureOrder sending JWT: \(jwt)")
-      req.addValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-    } else {
-      print("⚠️ [PaymentManager] captureOrder NO JWT found!")
+    var comps = URLComponents(
+      url: baseURL.appendingPathComponent("payment_status"),
+      resolvingAgainstBaseURL: false
+    )!
+    comps.queryItems = [
+      URLQueryItem(name: "paymentId", value: paymentId),
+      URLQueryItem(name: "PayerID",   value: payerId)
+    ]
+    guard let url = comps.url else {
+      return completion(.failure(.serverError("Bad capture URL")))
     }
 
-    req.httpBody = try? JSONSerialization.data(
-      withJSONObject: [
-        "orderID":    orderID,
-        "amount":     amount,
-        "approveUrl": approveUrl
-      ],
-      options: []
-    )
+    var req = URLRequest(url: url)
+    req.addValue("application/json", forHTTPHeaderField: "Accept")
 
     session.dataTask(with: req) { data, resp, err in
       if let e = err {
-        return DispatchQueue.main.async {
+        DispatchQueue.main.async {
           completion(.failure(.serverError(e.localizedDescription)))
         }
+        return
       }
-      // must be HTTP
       guard let http = resp as? HTTPURLResponse else {
-        print("⚠️ [PaymentManager] captureOrder non-HTTP response:", resp ?? "nil")
-        return DispatchQueue.main.async {
+        DispatchQueue.main.async {
           completion(.failure(.invalidResponse))
         }
+        return
       }
-      // non-2xx? log JSON
-      guard (200..<300).contains(http.statusCode) else {
-        if let d = data,
-           let json = try? JSONSerialization.jsonObject(with: d, options: .allowFragments) {
-          print("⚠️ [PaymentManager] captureOrder HTTP \(http.statusCode):", json)
-        } else {
-          print("⚠️ [PaymentManager] captureOrder HTTP \(http.statusCode), no JSON body")
+
+      if !(200..<400).contains(http.statusCode) {
+        let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
+        print("⚠️ [PaymentManager] captureOrder HTTP \(http.statusCode)")
+        print("Headers:", http.allHeaderFields)
+        print("Body:", body)
+        DispatchQueue.main.async {
+          completion(.failure(.serverError("HTTP \(http.statusCode): \(body)")))
         }
-        return DispatchQueue.main.async {
-          completion(.failure(.invalidResponse))
-        }
+        return
       }
-      print("✅ [PaymentManager] captureOrder succeeded")
+
       DispatchQueue.main.async {
         completion(.success(()))
       }
@@ -168,19 +208,37 @@ final class PaymentManager: NSObject {
 }
 
 extension PaymentManager: URLSessionDelegate, URLSessionTaskDelegate {
+
   func urlSession(_ session: URLSession,
                   didReceive challenge: URLAuthenticationChallenge,
                   completionHandler: @escaping (URLSession.AuthChallengeDisposition,
                                                 URLCredential?) -> Void)
   {
-    completionHandler(.performDefaultHandling, nil)
+    if challenge.protectionSpace.host == "test.nemausa.org",
+       let trust = challenge.protectionSpace.serverTrust
+    {
+      completionHandler(.useCredential, URLCredential(trust: trust))
+    } else {
+      completionHandler(.performDefaultHandling, nil)
+    }
   }
+
   func urlSession(_ session: URLSession,
                   task: URLSessionTask,
                   willPerformHTTPRedirection response: HTTPURLResponse,
                   newRequest request: URLRequest,
                   completionHandler: @escaping (URLRequest?) -> Void)
   {
+    if let location = request.url,
+       location.host?.contains("paypal.com") == true,
+       let cb = createOrderCallback
+    {
+      DispatchQueue.main.async { cb(.success(location)) }
+      createOrderCallback = nil
+      task.cancel()
+      completionHandler(nil)
+      return
+    }
     completionHandler(request)
   }
 }

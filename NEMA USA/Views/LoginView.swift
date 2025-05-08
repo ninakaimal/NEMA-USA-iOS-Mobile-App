@@ -3,7 +3,7 @@
 //  NEMA USA
 //  Created by Nina on 4/12/25.
 //  Updated by Sajith on 4/24/25
-//  Updated by Arjun on 5/05/25 switch to nemausa.org
+//  Updated by Arjun on 5/05/25 switch to test.nemausa.org
 //
 
 import SwiftUI
@@ -153,7 +153,12 @@ struct LoginView: View {
                 DatabaseManager.shared.saveLaravelSessionToken(laravelToken)
                 authToken = laravelToken
                 print("💾 [LoginView] Stored laravelSessionToken in AppStorage")
-
+                
+                // Save user info to UserDefaults for EventRegistrationView, etc.
+                UserDefaults.standard.setValue(user.name, forKey: "memberName")
+                UserDefaults.standard.setValue(user.email, forKey: "emailAddress")
+                UserDefaults.standard.setValue(user.phone, forKey: "phoneNumber")
+                
                 // 3) Fetch JSON-API JWT
                 NetworkManager.shared.loginJSON(email: email, password: password) { jwtResult in
                     DispatchQueue.main.async {

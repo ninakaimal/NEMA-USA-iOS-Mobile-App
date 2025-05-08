@@ -87,20 +87,13 @@ struct EventRegistrationView: View {
             ) {
                 Button("Cancel", role: .cancel) { }
                 Button("Confirm") {
-                    // 🔐 DEBUG: print out the JWT we're about to use
-                    let jwt = DatabaseManager.shared.jwtApiToken ?? "nil"
-                    print("🔐 [EventRegistration] JWT for order: \(jwt)")
-
                     let amt = String(totalAmount)
-                    PaymentManager.shared.createOrder(amount: amt) { result in
+                    PaymentManager.shared.createOrder(amount: amt, eventTitle: event.title) { result in
                         switch result {
                         case .failure(let err):
-                            print("❌ [EventRegistration] createOrder failed:", err)
-                            // surface in UI
                             paymentErrorMessage = "Could not create order: \(err)"
                             showPaymentError = true
                         case .success(let url):
-                            print("✅ [EventRegistration] got approval URL:", url)
                             approvalURL = url
                         }
                     }
@@ -137,24 +130,31 @@ struct EventRegistrationView: View {
 
             // MARK: – PayPal approval sheet
             .sheet(item: $approvalURL) { url in
-                SafariView(url: url)
+                PayPalView(
+                  approvalURL: url,
+                  showPaymentError: $showPaymentError,
+                  paymentErrorMessage: $paymentErrorMessage,
+                  showPurchaseSuccess: $showPurchaseSuccess
+                )
             }
 
             // MARK: – Handle PayPal redirect
             .onOpenURL { url in
                 guard
-                    let comps   = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                    let orderID = comps.queryItems?.first(where: { $0.name == "token" })?.value
-                else { return }
+                    let comps     = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                    let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
+                    let payerId   = comps.queryItems?.first(where: { $0.name == "PayerID"  })?.value
+                else {
+                    return
+                }
 
                 // 🔐 DEBUG: print JWT again on capture
                 let jwt = DatabaseManager.shared.jwtApiToken ?? "nil"
                 print("🔐 [EventRegistration] JWT for capture: \(jwt)")
 
                 PaymentManager.shared.captureOrder(
-                    orderID:   orderID,
-                    amount:    String(totalAmount),
-                    approveUrl: approvalURL?.absoluteString ?? ""
+                    paymentId: paymentId,
+                    payerId:   payerId
                 ) { result in
                     switch result {
                     case .failure(let e):
@@ -180,7 +180,7 @@ struct EventRegistrationView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // MARK: – Page Title
-                    Text("\(event.title) Registration")
+                    Text("\(event.title) Tickets")
                         .font(.title2).bold()
                         .padding(.horizontal)
                         .padding(.top, 16)
@@ -210,37 +210,10 @@ struct EventRegistrationView: View {
                 .font(.headline)
                 .padding(.bottom, 4)
 
-            if authToken == nil {
-                VStack(spacing: 8) {
-                    Text("Login to view").foregroundColor(.secondary)
-                    Button("Login") {
-                        pendingPurchase = false
-                        showLoginSheet  = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                Group {
-                    HStack {
-                        Text("Name").foregroundColor(.secondary)
-                        Spacer()
-                        Text(memberNameText).fontWeight(.medium)
-                    }
-                    HStack {
-                        Text("Email").foregroundColor(.secondary)
-                        Spacer()
-                        Text(emailAddressText).fontWeight(.medium)
-                    }
-                    HStack {
-                        Text("Phone").foregroundColor(.secondary)
-                        Spacer()
-                        TextField("Phone", text: $phoneText)
-                            .multilineTextAlignment(.trailing)
-                            .font(.body)
-                    }
-                }
+            Group {
+                TextField("Name", text: $memberNameText).textFieldStyle(.roundedBorder)
+                TextField("Email", text: $emailAddressText).keyboardType(.emailAddress).textFieldStyle(.roundedBorder)
+                TextField("Phone", text: $phoneText).keyboardType(.phonePad).textFieldStyle(.roundedBorder)
             }
         }
         .padding()
@@ -289,10 +262,7 @@ struct EventRegistrationView: View {
     private var purchaseButton: some View {
         Button {
             print("⚡️ Purchase tapped – terms=\(acceptedTerms) total=\(totalAmount) auth=\(authToken ?? "nil")")
-            if authToken == nil {
-                pendingPurchase = true
-                showLoginSheet  = true
-            } else {
+            if acceptedTerms && totalAmount > 0 {
                 showPurchaseConfirmation = true
             }
         } label: {
@@ -310,12 +280,10 @@ struct EventRegistrationView: View {
     }
 
     // MARK: – Helpers
-
     private func loadMemberInfo() {
-        guard let u = DatabaseManager.shared.currentUser else { return }
-        memberNameText   = u.name
-        emailAddressText = u.email
-        phoneText        = u.phone
+        memberNameText = UserDefaults.standard.string(forKey: "memberName") ?? ""
+        emailAddressText = UserDefaults.standard.string(forKey: "emailAddress") ?? ""
+        phoneText = UserDefaults.standard.string(forKey: "phoneNumber") ?? ""
     }
 }
 
