@@ -111,6 +111,7 @@ struct EventDetailView: View {
                         .font(.subheadline.bold())
                         .foregroundColor(.orange)
                         .buttonStyle(PlainButtonStyle())
+                        .tint(Color.orange)
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -136,7 +137,7 @@ struct EventDetailView: View {
                     // MARK: – More Info or Register Button
                     if event.isRegON {
                         NavigationLink(destination: EventRegistrationView(event: event)) {
-                            Text("Register")
+                            Text("Purchase Tickets")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .padding()

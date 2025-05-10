@@ -7,8 +7,6 @@
 
 import SwiftUI
 import UIKit
-import SafariServices
-import SwiftSoup   // still needed by your scraping/network code
 
 // Allow URL in .sheet(item:)
 extension URL: @retroactive Identifiable {
@@ -39,7 +37,7 @@ struct EventRegistrationView: View {
     @State private var showPurchaseSuccess      = false
     @State private var approvalURL: URL?        = nil
 
-    // NEW: to show payment errors on screen
+    // to show payment errors on screen
     @State private var showPaymentError    = false
     @State private var paymentErrorMessage = ""
 
@@ -87,16 +85,7 @@ struct EventRegistrationView: View {
             ) {
                 Button("Cancel", role: .cancel) { }
                 Button("Confirm") {
-                    let amt = String(totalAmount)
-                    PaymentManager.shared.createOrder(amount: amt, eventTitle: event.title) { result in
-                        switch result {
-                        case .failure(let err):
-                            paymentErrorMessage = "Could not create order: \(err)"
-                            showPaymentError = true
-                        case .success(let url):
-                            approvalURL = url
-                        }
-                    }
+                    initiateMobilePayment()
                 }
             } message: {
                 Text("""
@@ -118,7 +107,7 @@ struct EventRegistrationView: View {
 
             // MARK: – Success alert
             .alert(
-                "Purchase successful!",
+                "Purchase successful! Check \(emailAddressText).",
                 isPresented: $showPurchaseSuccess
             ) {
                 Button("OK") {
@@ -131,10 +120,10 @@ struct EventRegistrationView: View {
             // MARK: – PayPal approval sheet
             .sheet(item: $approvalURL) { url in
                 PayPalView(
-                  approvalURL: url,
-                  showPaymentError: $showPaymentError,
-                  paymentErrorMessage: $paymentErrorMessage,
-                  showPurchaseSuccess: $showPurchaseSuccess
+                    approvalURL: url,
+                    showPaymentError: $showPaymentError,
+                    paymentErrorMessage: $paymentErrorMessage,
+                    showPurchaseSuccess: $showPurchaseSuccess
                 )
             }
 
@@ -142,28 +131,25 @@ struct EventRegistrationView: View {
             .onOpenURL { url in
                 guard
                     let comps     = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                    let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                     let payerId   = comps.queryItems?.first(where: { $0.name == "PayerID"  })?.value
                 else {
                     return
                 }
 
-                // 🔐 DEBUG: print JWT again on capture
-                let jwt = DatabaseManager.shared.jwtApiToken ?? "nil"
-                print("🔐 [EventRegistration] JWT for capture: \(jwt)")
-
                 PaymentManager.shared.captureOrder(
-                    paymentId: paymentId,
-                    payerId:   payerId
+                    payerId: payerId,
+                    memberName: memberNameText,
+                    email: emailAddressText,
+                    phone: phoneText
                 ) { result in
-                    switch result {
-                    case .failure(let e):
-                        print("❌ [EventRegistration] captureOrder failed:", e)
-                        paymentErrorMessage = "Could not capture order: \(e)"
-                        showPaymentError = true
-                    case .success:
-                        print("✅ [EventRegistration] captureOrder succeeded")
-                        showPurchaseSuccess = true
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .failure(let e):
+                            paymentErrorMessage = "Could not capture order: \(e)"
+                            showPaymentError = true
+                        case .success:
+                            showPurchaseSuccess = true
+                        }
                     }
                 }
             }
@@ -179,22 +165,14 @@ struct EventRegistrationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // MARK: – Page Title
                     Text("\(event.title) Tickets")
                         .font(.title2).bold()
                         .padding(.horizontal)
                         .padding(.top, 16)
 
-                    // MARK: – Profile Info Card
                     infoCard
-
-                    // MARK: – Ticket Selection Card
                     ticketCard
-
-                    // MARK: – Terms & Total Card
                     termsCard
-
-                    // MARK: – Purchase Button
                     purchaseButton
 
                     Spacer(minLength: 32)
@@ -217,8 +195,7 @@ struct EventRegistrationView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.secondarySystemBackground)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
         .padding(.horizontal)
     }
@@ -235,8 +212,7 @@ struct EventRegistrationView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.secondarySystemBackground)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
         .padding(.horizontal)
     }
@@ -248,53 +224,64 @@ struct EventRegistrationView: View {
                 Spacer()
                 Text("$\(totalAmount)").font(.headline)
             }
-            Toggle(isOn: $acceptedTerms) {
-                Text("I accept the terms & conditions").font(.subheadline)
+
+            DisclosureGroup("View Terms & Conditions") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("• Membership status validated at event.")
+                    Text("• Verify PayPal login or use credit card (guest checkout).")
+                    Text("• Age verification via birth certificate may be required.")
+                    Text("• Check your spam folder if you don't see the confirmation email.")
+                    Divider()
+                    Text("**Waiver:** Fireworks used at event; NEMA not responsible for injuries or damages.")
+                    Divider()
+                    Text("**Refund Policy:** Non-refundable except if event is cancelled by NEMA.")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.top, 8)
             }
+
+            Toggle("I accept the terms & conditions", isOn: $acceptedTerms)
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.secondarySystemBackground)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
         .padding(.horizontal)
     }
 
     private var purchaseButton: some View {
-        Button {
-            print("⚡️ Purchase tapped – terms=\(acceptedTerms) total=\(totalAmount) auth=\(authToken ?? "nil")")
+        Button("Purchase") {
             if acceptedTerms && totalAmount > 0 {
                 showPurchaseConfirmation = true
+            } else if emailAddressText.isEmpty {
+                paymentErrorMessage = "Email is required for ticket purchase."
+                showPaymentError = true
             }
-        } label: {
-            Text("Purchase Tickets")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background((acceptedTerms && totalAmount > 0) ? Color.orange : Color.gray)
-                .foregroundColor(.white)
-                .cornerRadius(10)
         }
-        .disabled(!acceptedTerms || totalAmount == 0)
+        .disabled(!acceptedTerms || totalAmount == 0 || emailAddressText.isEmpty)
+        .padding().frame(maxWidth: .infinity)
+        .background((acceptedTerms && totalAmount > 0 && !emailAddressText.isEmpty) ? Color.orange : Color.gray)
+        .foregroundColor(.white).cornerRadius(10)
         .padding(.horizontal)
-        .padding(.bottom, 24)
     }
 
-    // MARK: – Helpers
     private func loadMemberInfo() {
         memberNameText = UserDefaults.standard.string(forKey: "memberName") ?? ""
         emailAddressText = UserDefaults.standard.string(forKey: "emailAddress") ?? ""
         phoneText = UserDefaults.standard.string(forKey: "phoneNumber") ?? ""
     }
-}
 
-// SafariView wrapper
-fileprivate struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
+    private func initiateMobilePayment() {
+        PaymentManager.shared.createOrder(amount: "\(totalAmount)", eventTitle: event.title) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let url):
+                    self.approvalURL = url
+                case .failure(let error):
+                    paymentErrorMessage = "Could not create order: \(error)"
+                    showPaymentError = true
+                }
+            }
+        }
     }
-    func updateUIViewController(
-        _ uiViewController: SFSafariViewController,
-        context: Context
-    ) { }
 }

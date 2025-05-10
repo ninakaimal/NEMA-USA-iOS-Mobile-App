@@ -60,7 +60,14 @@ struct PayPalView: UIViewRepresentable {
                let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                let payerId = comps.queryItems?.first(where: { $0.name == "PayerID" })?.value {
                 // Explicitly call backend to confirm payment
-                confirmPaymentOnBackend(paymentId: paymentId, payerId: payerId)
+                confirmPaymentOnBackend(
+                    paymentId: paymentId,
+                    payerId: payerId,
+                    email: UserDefaults.standard.string(forKey: "emailAddress") ?? "",
+                    name: UserDefaults.standard.string(forKey: "memberName") ?? "",
+                    phone: UserDefaults.standard.string(forKey: "phoneNumber") ?? "",
+                    comments: "Mobile App Ticket Purchase"
+                )
                 decisionHandler(.cancel)
                 return
             }
@@ -68,8 +75,18 @@ struct PayPalView: UIViewRepresentable {
             decisionHandler(.allow)
         }
 
-        private func confirmPaymentOnBackend(paymentId: String, payerId: String) {
-            guard let url = URL(string: "https://test.nemausa.org/payment_status?paymentId=\(paymentId)&PayerID=\(payerId)") else {
+        private func confirmPaymentOnBackend(paymentId: String, payerId: String, email: String, name: String, phone: String, comments: String) {
+            var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
+            components.queryItems = [
+                URLQueryItem(name: "paymentId", value: paymentId),
+                URLQueryItem(name: "PayerID", value: payerId),
+                URLQueryItem(name: "name", value: name),
+                URLQueryItem(name: "email", value: email),
+                URLQueryItem(name: "phone", value: phone),
+                URLQueryItem(name: "comments", value: comments)
+            ]
+
+            guard let url = components.url else {
                 print("❌ Invalid URL for backend capture call")
                 return
             }

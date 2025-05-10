@@ -9,33 +9,35 @@
 import Foundation
 
 enum PaymentError: Error {
-  case serverError(String)
-  case invalidResponse
-  case parseError(String)
+    case serverError(String)
+    case invalidResponse
+    case parseError(String)
 }
 
 final class PaymentManager: NSObject {
-  static let shared = PaymentManager()
-  private override init() {}
+    static let shared = PaymentManager()
+    private override init() {}
 
-  private var createOrderCallback: ((Result<URL,PaymentError>) -> Void)?
+    private var createOrderCallback: ((Result<URL,PaymentError>) -> Void)?
+    
+    private var paymentId: String?
 
-  private let baseURL = URL(string: "https://test.nemausa.org")!
+    private let baseURL = URL(string: "https://test.nemausa.org")!
 
-  private lazy var session: URLSession = {
-    let cfg = URLSessionConfiguration.default
-    cfg.httpCookieAcceptPolicy = .always
-    cfg.httpCookieStorage     = HTTPCookieStorage.shared
-    return URLSession(configuration: cfg,
-                      delegate: self,
-                      delegateQueue: nil)
-  }()
+    private lazy var session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.httpCookieAcceptPolicy = .always
+        cfg.httpCookieStorage     = HTTPCookieStorage.shared
+        return URLSession(configuration: cfg,
+                          delegate: self,
+                          delegateQueue: nil)
+    }()
 
-    // Add this helper function INSIDE your PaymentManager class
+    // Helper function for initial cookie fetch
     func fetchInitialCookies(completion: @escaping (Bool) -> Void) {
         var components = URLComponents(url: baseURL.appendingPathComponent("buy_ticket"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "id", value: "160")]
-        
+
         guard let initialURL = components.url else {
             print("❌ URL creation failed")
             completion(false)
@@ -44,8 +46,6 @@ final class PaymentManager: NSObject {
 
         var initialRequest = URLRequest(url: initialURL)
         initialRequest.httpMethod = "GET"
-        
-        // Critical browser-like headers
         initialRequest.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         initialRequest.setValue("en-US,en;q=0.5", forHTTPHeaderField: "Accept-Language")
         initialRequest.setValue("keep-alive", forHTTPHeaderField: "Connection")
@@ -69,8 +69,7 @@ final class PaymentManager: NSObject {
         }.resume()
     }
 
-  // MARK: — 1) Create a PayPal order
-
+    // MARK: — 1) Create a PayPal order
     func createOrder(
         amount: String,
         eventTitle: String,
@@ -84,7 +83,7 @@ final class PaymentManager: NSObject {
                 return
             }
 
-            let url = self.baseURL.appendingPathComponent("generic_payment")
+            let url = self.baseURL.appendingPathComponent("v1/pay_with_paypal_mobile")
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -96,149 +95,166 @@ final class PaymentManager: NSObject {
             }
 
             let payload: [String: Any] = [
-                "type": "ticket",
-                "returnUrl": "https://test.nemausa.org/payment_status",
-                "id": 0,
-                "event_id": 160,
-                "item": "\(eventTitle) Tickets",
                 "amount": amount,
-                "description": "Ticket purchase for \(eventTitle) event"
+                "item": "\(eventTitle) Tickets",
+                "description": "Ticket purchase for \(eventTitle) event",
+                "returnUrl": "https://test.nemausa.org/payment_status",
+                "type": "ticket",
+                "event_id": 160
             ]
 
             req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
             self.session.dataTask(with: req) { data, resp, err in
                 if let e = err {
+                    print("❌ Network error:", e.localizedDescription)
                     DispatchQueue.main.async {
                         completion(.failure(.serverError(e.localizedDescription)))
                     }
                     return
                 }
 
-                guard let http = resp as? HTTPURLResponse, let d = data, (200..<400).contains(http.statusCode) else {
+                guard let http = resp as? HTTPURLResponse else {
+                    print("❌ Response was not HTTPURLResponse")
                     DispatchQueue.main.async {
                         completion(.failure(.invalidResponse))
                     }
                     return
                 }
 
-                // Parse JSON here instead of looking for a Location header
+                print("🔍 HTTP Status Code:", http.statusCode)
+                print("🔍 HTTP Headers:", http.allHeaderFields)
+                
+                guard let d = data else {
+                    print("❌ Response data is nil")
+                    DispatchQueue.main.async {
+                        completion(.failure(.invalidResponse))
+                    }
+                    return
+                }
+
+                let responseBody = String(data: d, encoding: .utf8) ?? "<no body>"
+                print("🔍 Response body:", responseBody)
+
+                guard (200..<400).contains(http.statusCode) else {
+                    print("❌ Status code out of range:", http.statusCode)
+                    DispatchQueue.main.async {
+                        completion(.failure(.invalidResponse))
+                    }
+                    return
+                }
+
                 do {
                     if let json = try JSONSerialization.jsonObject(with: d) as? [String: Any],
-                       let flowExecutionUrl = json["flowExecutionUrl"] as? String {
-                        
-                        let approvalUrlString = "https://www.sandbox.paypal.com\(flowExecutionUrl)"
-                        if let approvalURL = URL(string: approvalUrlString) {
-                            print("✅ [PaymentManager] Parsed PayPal approval URL:", approvalURL)
-                            DispatchQueue.main.async {
-                                completion(.success(approvalURL))
-                            }
-                        } else {
-                            throw PaymentError.parseError("Malformed URL")
+                       let approvalURLString = json["approval_url"] as? String,
+                       let paymentId = json["payment_id"] as? String,
+                       let approvalURL = URL(string: approvalURLString) {
+
+                        self.paymentId = paymentId
+                        print("✅ Parsed PayPal approval URL successfully:", approvalURL)
+                        DispatchQueue.main.async {
+                            completion(.success(approvalURL))
                         }
                     } else {
-                        throw PaymentError.parseError("Missing 'flowExecutionUrl'")
+                        throw PaymentError.parseError("Missing approval_url or payment_id in JSON")
                     }
                 } catch {
-                    let body = String(data: d, encoding: .utf8) ?? "<no body>"
-                    print("⚠️ [PaymentManager] JSON parse failed:", error)
-                    print("Body:", body)
+                    print("⚠️ JSON parse error:", error.localizedDescription)
                     DispatchQueue.main.async {
-                        completion(.failure(.parseError("Failed to parse response: \(error.localizedDescription)")))
+                        completion(.failure(.parseError("Failed to parse JSON: \(error.localizedDescription)")))
                     }
                 }
             }.resume()
         }
     }
+    
+    // MARK: — 2) Capture the order (Updated with correct endpoint and method)
+    func captureOrder(
+        payerId: String,
+        memberName: String = "",
+        email: String = "",
+        phone: String = "",
+        comments: String = "Mobile app ticket purchase",
+        completion: @escaping (Result<Void, PaymentError>) -> Void
+    ) {
+        guard let storedPaymentId = paymentId else {
+            completion(.failure(.serverError("No paymentId found")))
+            return
+        }
 
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("v1/payment_status_mobile"),
+            resolvingAgainstBaseURL: false
+        )!
 
-  // MARK: — 2) Capture the order
+        comps.queryItems = [
+            URLQueryItem(name: "paymentId", value: storedPaymentId),
+            URLQueryItem(name: "PayerID", value: payerId),
+            URLQueryItem(name: "name", value: memberName),
+            URLQueryItem(name: "email", value: email),
+            URLQueryItem(name: "phone", value: phone),
+            URLQueryItem(name: "comments", value: comments)
+        ]
 
-  func captureOrder(
-    paymentId: String,
-    payerId:   String,
-    completion: @escaping (Result<Void, PaymentError>) -> Void
-  ) {
-    var comps = URLComponents(
-      url: baseURL.appendingPathComponent("payment_status"),
-      resolvingAgainstBaseURL: false
-    )!
-    comps.queryItems = [
-      URLQueryItem(name: "paymentId", value: paymentId),
-      URLQueryItem(name: "PayerID",   value: payerId)
-    ]
-    guard let url = comps.url else {
-      return completion(.failure(.serverError("Bad capture URL")))
+        guard let url = comps.url else {
+            completion(.failure(.serverError("Bad capture URL")))
+            return
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.addValue("application/json", forHTTPHeaderField: "Accept")
+
+        session.dataTask(with: req) { data, resp, err in
+            if let e = err {
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError(e.localizedDescription)))
+                }
+                return
+            }
+            guard let http = resp as? HTTPURLResponse else {
+                DispatchQueue.main.async {
+                    completion(.failure(.invalidResponse))
+                }
+                return
+            }
+
+            if !(200..<300).contains(http.statusCode) {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
+                print("⚠️ [PaymentManager] captureOrder HTTP \(http.statusCode)")
+                print("Headers:", http.allHeaderFields)
+                print("Body:", body)
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("HTTP \(http.statusCode): \(body)")))
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.paymentId = nil // Clear paymentId on success
+                completion(.success(()))
+            }
+        }.resume()
     }
-
-    var req = URLRequest(url: url)
-    req.addValue("application/json", forHTTPHeaderField: "Accept")
-
-    session.dataTask(with: req) { data, resp, err in
-      if let e = err {
-        DispatchQueue.main.async {
-          completion(.failure(.serverError(e.localizedDescription)))
-        }
-        return
-      }
-      guard let http = resp as? HTTPURLResponse else {
-        DispatchQueue.main.async {
-          completion(.failure(.invalidResponse))
-        }
-        return
-      }
-
-      if !(200..<400).contains(http.statusCode) {
-        let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-        print("⚠️ [PaymentManager] captureOrder HTTP \(http.statusCode)")
-        print("Headers:", http.allHeaderFields)
-        print("Body:", body)
-        DispatchQueue.main.async {
-          completion(.failure(.serverError("HTTP \(http.statusCode): \(body)")))
-        }
-        return
-      }
-
-      DispatchQueue.main.async {
-        completion(.success(()))
-      }
-    }
-    .resume()
-  }
 }
 
 extension PaymentManager: URLSessionDelegate, URLSessionTaskDelegate {
-
-  func urlSession(_ session: URLSession,
-                  didReceive challenge: URLAuthenticationChallenge,
-                  completionHandler: @escaping (URLSession.AuthChallengeDisposition,
-                                                URLCredential?) -> Void)
-  {
-    if challenge.protectionSpace.host == "test.nemausa.org",
-       let trust = challenge.protectionSpace.serverTrust
-    {
-      completionHandler(.useCredential, URLCredential(trust: trust))
-    } else {
-      completionHandler(.performDefaultHandling, nil)
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.host == "test.nemausa.org", let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
     }
-  }
 
-  func urlSession(_ session: URLSession,
-                  task: URLSessionTask,
-                  willPerformHTTPRedirection response: HTTPURLResponse,
-                  newRequest request: URLRequest,
-                  completionHandler: @escaping (URLRequest?) -> Void)
-  {
-    if let location = request.url,
-       location.host?.contains("paypal.com") == true,
-       let cb = createOrderCallback
-    {
-      DispatchQueue.main.async { cb(.success(location)) }
-      createOrderCallback = nil
-      task.cancel()
-      completionHandler(nil)
-      return
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        if let location = request.url, location.host?.contains("paypal.com") == true, let cb = createOrderCallback {
+            DispatchQueue.main.async { cb(.success(location)) }
+            createOrderCallback = nil
+            task.cancel()
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
-    completionHandler(request)
-  }
 }
