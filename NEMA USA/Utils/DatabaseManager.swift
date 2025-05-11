@@ -5,7 +5,6 @@
 
 import Foundation
 
-/// A simple wrapper around UserDefaults to persist two distinct auth tokens
 /// (Laravel scraping session & JSON API JWT), refresh tokens, the current
 /// user profile, and the family list.
 final class DatabaseManager {

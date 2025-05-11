@@ -107,7 +107,7 @@ struct EventRegistrationView: View {
 
             // MARK: – Success alert
             .alert(
-                "Purchase successful! Check \(emailAddressText).",
+                "Purchase successful! Check \(emailAddressText)",
                 isPresented: $showPurchaseSuccess
             ) {
                 Button("OK") {

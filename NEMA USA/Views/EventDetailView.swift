@@ -28,6 +28,7 @@ struct EventDetailView: View {
             UIBarButtonItem.appearance().tintColor               = .white
         }
         UINavigationBar.appearance().tintColor = .white
+        UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = UIColor(Color.orange)
     }
 
     var body: some View {
