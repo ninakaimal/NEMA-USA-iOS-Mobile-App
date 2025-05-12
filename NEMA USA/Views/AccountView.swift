@@ -65,11 +65,10 @@ struct AccountView: View {
         if authToken == nil {
             VStack(spacing: 16) {
                 LoginView()
-                Divider().padding(.horizontal)
+//                Divider().padding(.horizontal)
                 NavigationLink(destination: RegistrationView()) {
-                    Text("Don’t have an account? Sign Up")
-                        .font(.subheadline)
-                        .foregroundColor(.orange)
+//                    Text("Don’t have an account? Sign Up")                         //                 .font(.subheadline)
+//                        .foregroundColor(.orange)
                 }
                 .padding(.top, 8)
             }

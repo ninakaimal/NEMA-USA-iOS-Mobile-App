@@ -137,6 +137,136 @@ final class NetworkManager: NSObject {
 
     // MARK: – Helpers
 
+    // Send reset password link
+    func sendPasswordResetLink(email: String, completion: @escaping (Result<String, NetworkError>) -> Void) {
+        fetchCSRFToken { result in
+            switch result {
+            case .failure(let error):
+                print("⚠️ CSRF token fetch error:", error.localizedDescription)
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("CSRF token error: \(error.localizedDescription)")))
+                }
+            case .success(let csrfToken):
+                let endpoint = URL(string: "https://test.nemausa.org/user/reset/password")!
+                var req = URLRequest(url: endpoint)
+                req.httpMethod = "POST"
+                req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+                let params = [
+                    "_token": csrfToken,
+                    "email": email
+                ]
+                
+                req.httpBody = params.map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+                                     .joined(separator: "&")
+                                     .data(using: .utf8)
+
+                print("🚀 [sendPasswordResetLink] Sending request to: \(endpoint.absoluteString) with email: \(email)")
+
+                self.session.dataTask(with: req) { data, response, error in
+                    if let error = error {
+                        print("❌ [sendPasswordResetLink] Error:", error.localizedDescription)
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError(error.localizedDescription)))
+                        }
+                        return
+                    }
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        print("❌ [sendPasswordResetLink] Non-HTTP Response")
+                        DispatchQueue.main.async {
+                            completion(.failure(.invalidResponse))
+                        }
+                        return
+                    }
+
+                    print("🔄 [sendPasswordResetLink] HTTP Response Status Code: \(httpResponse.statusCode)")
+
+                    guard (200..<400).contains(httpResponse.statusCode) else {
+                        let bodyText = String(data: data ?? Data(), encoding: .utf8) ?? "No response body"
+                        print("❌ [sendPasswordResetLink] HTTP Status Error \(httpResponse.statusCode): \(bodyText)")
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError("HTTP \(httpResponse.statusCode)")))
+                        }
+                        return
+                    }
+
+                    DispatchQueue.main.async {
+                        print("✅ [sendPasswordResetLink] Reset link successfully sent.")
+                        completion(.success("Reset link sent to your email."))
+                    }
+                }.resume()
+            }
+        }
+    }
+
+    
+    // Reset password function
+    func resetPassword(token: String, newPassword: String, completion: @escaping (Result<String, NetworkError>) -> Void) {
+        fetchCSRFToken { result in
+            switch result {
+            case .failure(let error):
+                print("⚠️ CSRF token fetch error:", error.localizedDescription)
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("CSRF token error: \(error.localizedDescription)")))
+                }
+            case .success(let csrfToken):
+                let endpoint = URL(string: "https://test.nemausa.org/user/reset_password")!
+                var req = URLRequest(url: endpoint)
+                req.httpMethod = "POST"
+                req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+                let params = [
+                    "_token": csrfToken,
+                    "token": token,
+                    "password": newPassword,
+                    "cnf_password": newPassword
+                ]
+
+                req.httpBody = params.map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+                                     .joined(separator: "&")
+                                     .data(using: .utf8)
+
+                print("🚀 [resetPassword] Sending request to: \(endpoint.absoluteString) with reset token: \(token)")
+
+                self.session.dataTask(with: req) { data, response, error in
+                    if let error = error {
+                        print("❌ [resetPassword] Transport Error:", error.localizedDescription)
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError(error.localizedDescription)))
+                        }
+                        return
+                    }
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        print("❌ [resetPassword] Invalid response: Not HTTP.")
+                        DispatchQueue.main.async {
+                            completion(.failure(.invalidResponse))
+                        }
+                        return
+                    }
+
+                    print("🔄 [resetPassword] HTTP Response Status Code:", httpResponse.statusCode)
+
+                    guard (200..<400).contains(httpResponse.statusCode) else {
+                        let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                        print("❌ [resetPassword] HTTP Status Error \(httpResponse.statusCode): \(bodyText)")
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError("HTTP Status: \(httpResponse.statusCode), body: \(bodyText)")))
+                        }
+                        return
+                    }
+
+                    print("✅ [resetPassword] Password reset successful.")
+
+                    DispatchQueue.main.async {
+                        completion(.success("Your password has been reset successfully."))
+                    }
+                }.resume()
+            }
+        }
+    }
+
     /// 1) Fetch the hidden Laravel CSRF token from the form
     func fetchCSRFToken(completion: @escaping (Result<String, Error>) -> Void) {
         var comps = URLComponents(

@@ -108,6 +108,15 @@ struct LoginView: View {
                 .padding(.horizontal)
                 .disabled(isLoading)
 
+                // MARK: Forgot password
+                
+                NavigationLink(
+                    "Forgot Password?",
+                    destination: PasswordResetView(mode: .requestLink)
+                )
+                .padding(.top, 8)
+                .foregroundColor(.blue)
+                
                 // MARK: Footer
                 Text("© NEMA Boston, All rights reserved.")
                     .font(.footnote)

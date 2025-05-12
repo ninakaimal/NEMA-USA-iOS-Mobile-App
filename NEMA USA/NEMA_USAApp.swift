@@ -10,7 +10,9 @@ import SwiftUI
 struct NEMA_USAApp: App {
     @UIApplicationDelegateAdaptor(ServiceDelegate.self)
     var appDelegate
-    
+
+    @State private var passwordResetToken: PasswordResetToken?
+
     init() {
         configureNavigationBarAppearance()
     }
@@ -18,8 +20,30 @@ struct NEMA_USAApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    handleUniversalLink(url: url)
+                }
+                .sheet(item: $passwordResetToken) { token in
+                    PasswordResetView(mode: .reset(token: token.id))
+                }
         }
     }
+
+    private func handleUniversalLink(url: URL) {
+        guard url.host == "test.nemausa.org",
+              url.path.starts(with: "/user/reset_password"),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {
+            return
+        }
+
+        passwordResetToken = PasswordResetToken(id: token)
+    }
+}
+
+// Clearly defined within the same file
+struct PasswordResetToken: Identifiable {
+    let id: String
 }
 
 private func configureNavigationBarAppearance() {
