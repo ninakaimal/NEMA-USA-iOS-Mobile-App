@@ -13,6 +13,8 @@ struct PayPalView: UIViewRepresentable {
     @Binding var showPaymentError: Bool
     @Binding var paymentErrorMessage: String
     @Binding var showPurchaseSuccess: Bool
+    let comments: String
+    let successMessage: String
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -60,13 +62,13 @@ struct PayPalView: UIViewRepresentable {
                let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                let payerId = comps.queryItems?.first(where: { $0.name == "PayerID" })?.value {
                 // Explicitly call backend to confirm payment
-                confirmPaymentOnBackend(
+                 confirmPaymentOnBackend(
                     paymentId: paymentId,
-                    payerId: payerId,
-                    email: UserDefaults.standard.string(forKey: "emailAddress") ?? "",
-                    name: UserDefaults.standard.string(forKey: "memberName") ?? "",
-                    phone: UserDefaults.standard.string(forKey: "phoneNumber") ?? "",
-                    comments: "Mobile App Ticket Purchase"
+                    payerId:   payerId,
+                    email:     UserDefaults.standard.string(forKey: "emailAddress") ?? "",
+                    name:      UserDefaults.standard.string(forKey: "memberName") ?? "",
+                    phone:     UserDefaults.standard.string(forKey: "phoneNumber") ?? "",
+                    comments:  parent.comments
                 )
                 decisionHandler(.cancel)
                 return

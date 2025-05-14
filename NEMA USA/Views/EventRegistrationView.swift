@@ -119,12 +119,14 @@ struct EventRegistrationView: View {
 
             // MARK: – PayPal approval sheet
             .sheet(item: $approvalURL) { url in
-                PayPalView(
-                    approvalURL: url,
-                    showPaymentError: $showPaymentError,
-                    paymentErrorMessage: $paymentErrorMessage,
-                    showPurchaseSuccess: $showPurchaseSuccess
-                )
+              PayPalView(
+                approvalURL:        url,
+                showPaymentError:   $showPaymentError,
+                paymentErrorMessage:$paymentErrorMessage,
+                showPurchaseSuccess:$showPurchaseSuccess,
+                comments:           "Mobile App Ticket Purchase",
+                successMessage:     "Your tickets have been purchased!"
+              )
             }
 
             // MARK: – Handle PayPal redirect

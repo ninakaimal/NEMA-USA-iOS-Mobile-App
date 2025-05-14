@@ -8,6 +8,11 @@
 
 import SwiftUI
 
+// MARK: – Notifications
+extension Notification.Name {
+  /// Fired as soon as we’ve stored the JSON-API JWT
+  static let didReceiveJWT = Notification.Name("didReceiveJWT")
+}
 struct LoginView: View {
     @Environment(\.presentationMode) private var presentationMode
 
@@ -154,13 +159,7 @@ struct LoginView: View {
         NetworkManager.shared.login(email: email, password: password) { scrapeResult in
             switch scrapeResult {
             case let .success((laravelToken, user)):
-                print("✅ [LoginView] Laravel scrape succeeded, token: \(laravelToken)")
-                print("ℹ️ [LoginView] User profile: \(user)")
-
-                // 2a) Save scraped profile & session
-                DatabaseManager.shared.saveUser(user)
                 DatabaseManager.shared.saveLaravelSessionToken(laravelToken)
-                authToken = laravelToken
                 print("💾 [LoginView] Stored laravelSessionToken in AppStorage")
                 
                 // Save user info to UserDefaults for EventRegistrationView, etc.
@@ -178,6 +177,7 @@ struct LoginView: View {
                         case let .success((jwt, _)):
                             print("🔐 [LoginView] got JWT = \(jwt)")
                             DatabaseManager.shared.saveJwtApiToken(jwt)
+                            NotificationCenter.default.post(name: .didReceiveJWT, object: nil)
                         case let .failure(err):
                             print("⚠️ [LoginView] Couldn't fetch JSON-API token:", err)
                         }

@@ -15,7 +15,18 @@ struct UserProfile: Codable, Equatable {
     let email: String
     let phone: String
     let comments: String?
-    let membershipExpiryDate: String?
+    var membershipExpiryDate: String?
+    
+    enum CodingKeys: String, CodingKey {
+            case id
+            case name
+            case dateOfBirth
+            case address
+            case email
+            case phone
+            case comments
+            case membershipExpiryDate = "membership_expiry_date"
+        }
 }
 
 struct FamilyMember: Identifiable, Codable {

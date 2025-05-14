@@ -9,6 +9,22 @@
 import Foundation
 import SwiftSoup
 
+struct MobileMembershipPackage: Decodable {
+  let id: Int
+  let name: String
+  let amount: Double
+  let years_of_validity: Int
+}
+
+struct Membership: Decodable {
+  let id: Int
+  let user_id: Int
+  let membership_pkg_id: Int
+  let amount: Double
+  let exp_date: String
+  let package: MobileMembershipPackage?
+}
+
 /// All the errors our networking layer can produce
 enum NetworkError: Error {
     case serverError(String)      // underlying URLSession error or HTTP error
@@ -20,7 +36,7 @@ enum NetworkError: Error {
 private struct LoginResponse: Decodable {
     let token: String
     let refreshToken: String
-    let user: UserProfile
+    
 }
 
 private struct RefreshResponse: Decodable {
@@ -55,55 +71,41 @@ final class NetworkManager: NSObject {
       password: String,
       completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
     ) {
-      let url = URL(string: "https://nema-api.kanakaagro.in/api/login")!
+      let url = baseURL.appendingPathComponent("v1/login")
       var req = URLRequest(url: url)
       req.httpMethod = "POST"
       req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-      let body = ["email": email, "password": password]
-      req.httpBody = try? JSONEncoder().encode(body)
+      req.httpBody = try? JSONEncoder().encode(["email": email, "password": password])
 
       session.dataTask(with: req) { data, resp, err in
-        // transport error
-        if let e = err {
-          print("⚠️ [NetworkManager] loginJSON transport error:", e.localizedDescription)
-          return DispatchQueue.main.async {
-            completion(.failure(.serverError(e.localizedDescription)))
-          }
-        }
-        // must be HTTP
-        guard let http = resp as? HTTPURLResponse else {
-          print("⚠️ [NetworkManager] loginJSON non-HTTP response:", resp ?? "nil")
+        guard err == nil,
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let d = data
+        else {
           return DispatchQueue.main.async {
             completion(.failure(.invalidResponse))
           }
         }
-        // non-2xx? log status + body
-        guard (200..<300).contains(http.statusCode) else {
-          let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-          print("⚠️ [NetworkManager] loginJSON HTTP \(http.statusCode) →", bodyText)
-          return DispatchQueue.main.async {
-            completion(.failure(.serverError("HTTP \(http.statusCode)")))
-          }
-        }
-        // data must exist
-        guard let d = data else {
-          print("⚠️ [NetworkManager] loginJSON HTTP \(http.statusCode) but no data")
-          return DispatchQueue.main.async {
-            completion(.failure(.invalidResponse))
-          }
-        }
-        // decode
+
         do {
-          let dec = try JSONDecoder().decode(LoginResponse.self, from: d)
-          print("✅ [NetworkManager] loginJSON succeeded, token:", dec.token)
-          DatabaseManager.shared.saveJwtApiToken(dec.token)
-          DatabaseManager.shared.saveRefreshToken(dec.refreshToken)
-          DatabaseManager.shared.saveUser(dec.user)
-          DispatchQueue.main.async {
-            completion(.success((token: dec.token, user: dec.user)))
+          let loginResp = try JSONDecoder().decode(LoginResponse.self, from: d)
+          DatabaseManager.shared.saveJwtApiToken(loginResp.token)
+          DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
+
+          // now fetch the real UserProfile (including expiry date)
+          self.fetchProfileJSON { result in
+            DispatchQueue.main.async {
+              switch result {
+              case .success(let profile):
+                DatabaseManager.shared.saveUser(profile)
+                UserDefaults.standard.set(profile.id, forKey: "userId")
+                completion(.success((token: loginResp.token, user: profile)))
+              case .failure(let err):
+                completion(.failure(err))
+              }
+            }
           }
         } catch {
-          print("⚠️ [NetworkManager] loginJSON decode error:", error)
           DispatchQueue.main.async {
             completion(.failure(.decodingError(error)))
           }
@@ -419,6 +421,20 @@ final class NetworkManager: NSObject {
                 let phone   = try doc.select("input[name=phone]").first()?.attr("value") ?? ""
                 let dob     = try doc.select("input[name=dateOfBirth]").first()?.attr("value") ?? ""
                 let address = try doc.select("textarea[name=address]").first()?.text() ?? ""
+
+                // 1) try the (now-removed) input just in case
+                let inputRaw = try doc.select("input[name=exp_date]")
+                                     .first()?.attr("value") ?? ""
+
+                // 2) new fallback: the <span> immediately after the <label>
+                let spanRaw = try doc
+                  .select("label:containsOwn(Your Membership Will Expire On) + span.text-danger")
+                  .first()?.text() ?? ""
+
+                // 3) pick whichever is nonempty
+                let expiryRaw = !inputRaw.isEmpty ? inputRaw : spanRaw
+
+                
                 let profile = UserProfile(
                     id:                   0,
                     name:                 name,
@@ -427,7 +443,7 @@ final class NetworkManager: NSObject {
                     email:                email,
                     phone:                phone,
                     comments:             nil,
-                    membershipExpiryDate: nil
+                    membershipExpiryDate: expiryRaw.isEmpty ? nil : expiryRaw
                 )
                 DispatchQueue.main.async {
                     completion(.success(profile))
@@ -533,6 +549,154 @@ final class NetworkManager: NSObject {
     }
 
     // MARK: – JSON-based methods
+    
+    // 1) Public list of packages
+    func fetchMembershipPackages(
+      completion: @escaping (Result<[MobileMembershipPackage], NetworkError>) -> Void
+    ) {
+      let url = baseURL.appendingPathComponent("v1/mobile/membership/packages")
+      var req = URLRequest(url: url)
+      req.httpMethod = "GET"
+      session.dataTask(with: req) { data, resp, err in
+        if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
+        guard
+          let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+          let d = data
+        else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
+        do {
+          let packs = try JSONDecoder().decode([MobileMembershipPackage].self, from: d)
+          DispatchQueue.main.async { completion(.success(packs)) }
+        } catch {
+          DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+        }
+      }.resume()
+    }
+
+    // 2) Get the user’s current membership
+    func fetchMembership(
+      completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+      guard let jwt = DatabaseManager.shared.jwtApiToken else {
+        return completion(.failure(.invalidResponse))
+      }
+      let url = baseURL.appendingPathComponent("v1/mobile/membership")
+      var req = URLRequest(url: url)
+      req.httpMethod = "GET"
+      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+      session.dataTask(with: req) { data, resp, err in
+        if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
+        guard
+          let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+          let d = data
+        else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
+        do {
+          let m = try JSONDecoder().decode(Membership.self, from: d)
+          DispatchQueue.main.async { completion(.success(m)) }
+        } catch {
+          DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+        }
+      }.resume()
+    }
+
+    // 3) Create membership
+    func createMembership(
+      packageId: Int,
+      completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+      guard let jwt = DatabaseManager.shared.jwtApiToken else {
+        return completion(.failure(.invalidResponse))
+      }
+      let url = baseURL.appendingPathComponent("v1/mobile/membership")
+      var req = URLRequest(url: url)
+      req.httpMethod = "POST"
+      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      let body = ["package_id": packageId]
+      req.httpBody = try? JSONEncoder().encode(body)
+      performRequest(req) { result in
+        switch result {
+        case .failure(let e): completion(.failure(e))
+        case .success(let data):
+          do {
+            let m = try JSONDecoder().decode(Membership.self, from: data)
+            completion(.success(m))
+          } catch {
+            completion(.failure(.decodingError(error)))
+          }
+        }
+      }
+    }
+
+    // 4) Renew membership
+    func renewMembership(
+      packageId: Int,
+      completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+      guard let jwt = DatabaseManager.shared.jwtApiToken else {
+        return completion(.failure(.invalidResponse))
+      }
+      let url = baseURL.appendingPathComponent("v1/mobile/membership/renew")
+      var req = URLRequest(url: url)
+      req.httpMethod = "POST"
+      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      let body = ["package_id": packageId]
+      req.httpBody = try? JSONEncoder().encode(body)
+      performRequest(req) { result in
+        switch result {
+        case .failure(let e): completion(.failure(e))
+        case .success(let data):
+          do {
+            let m = try JSONDecoder().decode(Membership.self, from: data)
+            completion(.success(m))
+          } catch {
+            completion(.failure(.decodingError(error)))
+          }
+        }
+      }
+    }
+    
+
+    /// GET /api/user → JSON User object including membershipExpiryDate & id
+    func fetchProfileJSON(completion: @escaping (Result<UserProfile, NetworkError>) -> Void) {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let url = baseURL.appendingPathComponent("v1/user")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.addValue("application/json", forHTTPHeaderField: "Accept")
+        req.addValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        session.dataTask(with: req) { data, resp, err in
+            if let e = err {
+                return DispatchQueue.main.async {
+                    completion(.failure(.serverError(e.localizedDescription)))
+                }
+            }
+            guard let http = resp as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let d = data
+            else {
+                return DispatchQueue.main.async {
+                    completion(.failure(.invalidResponse))
+                }
+            }
+            do {
+                let profile = try JSONDecoder().decode(UserProfile.self, from: d)
+                // ✅ store the user-id for future calls
+                UserDefaults.standard.set(profile.id, forKey: "userId")
+                DispatchQueue.main.async {
+                    completion(.success(profile))
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(.decodingError(error)))
+                }
+            }
+        }
+        .resume()
+    }
 
     /// POST `/profile` form-URL-encoded
     func updateProfile(
@@ -553,15 +717,15 @@ final class NetworkManager: NSObject {
                 let userId = DatabaseManager.shared.currentUser?.id ?? 0
                 let params = [
                     "_token": token,
+                    "user_id": String(userId),
                     "name": name,
                     "phone": phone,
-                    "address": address,
-                    "user_id": String(userId)
+                    "address": address
                 ]
-                let bodyString = params
+                req.httpBody = params
                     .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
                     .joined(separator: "&")
-                req.httpBody = bodyString.data(using: .utf8)
+                    .data(using: .utf8)
 
                 self.session.dataTask(with: req) { data, resp, err in
                     if let err = err {
@@ -570,46 +734,30 @@ final class NetworkManager: NSObject {
                         }
                     }
                     guard let http = resp as? HTTPURLResponse,
-                          (200..<400).contains(http.statusCode),
-                          let htmlData = data,
-                          let html     = String(data: htmlData, encoding: .utf8)
+                          (200..<400).contains(http.statusCode)
                     else {
                         return DispatchQueue.main.async {
                             completion(.failure(.invalidResponse))
                         }
                     }
 
-                    // on success we re-scrape the profile page to return the updated UserProfile
-                    do {
-                        let doc   = try SwiftSoup.parse(html)
-                        let name  = try doc.select("input[name=name]").first()?.attr("value") ?? ""
-                        let email = try doc.select("input[name=email]").first()?.attr("value") ?? ""
-                        let phone = try doc.select("input[name=phone]").first()?.attr("value") ?? ""
-                        let dob   = try doc.select("input[name=dateOfBirth]").first()?.attr("value") ?? ""
-                        let addr  = try doc.select("textarea[name=address]").first()?.text()    ?? ""
+                    // 3) now fetch the *JSON* user — this has the full profile + expiry
+                    self.fetchProfileJSON { result in
+                      DispatchQueue.main.async {
+                        switch result {
+                        case .success(let freshProfile):
+                          completion(.success(freshProfile))
 
-                        let updated = UserProfile(
-                            id:                   userId,
-                            name:                 name,
-                            dateOfBirth:          dob,
-                            address:              addr,
-                            email:                email,
-                            phone:                phone,
-                            comments:             nil,
-                            membershipExpiryDate: nil
-                        )
-                        DispatchQueue.main.async { completion(.success(updated)) }
-                    } catch {
-                        DispatchQueue.main.async {
-                            completion(.failure(.decodingError(error)))
+                        case .failure(let err):
+                          completion(.failure(err))
                         }
+                      }
                     }
+                  }
+                  .resume()
                 }
-                .resume()
+              }
             }
-        }
-    }
-
     /// POST `/fmly_mmbr` form-URL-encoded (one request per member)
     func updateFamily(
         _ members: [FamilyMember],
@@ -820,26 +968,37 @@ final class NetworkManager: NSObject {
                 }
             }
             do {
-                let decoded = try JSONDecoder().decode(LoginResponse.self, from: bytes)
-                DatabaseManager.shared.saveJwtApiToken(decoded.token)
-                DatabaseManager.shared.saveRefreshToken(decoded.refreshToken)
-                DatabaseManager.shared.saveUser(decoded.user)
+              // decode only tokens
+              let loginResp = try JSONDecoder().decode(LoginResponse.self, from: bytes)
+              DatabaseManager.shared.saveJwtApiToken(loginResp.token)
+              DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
+
+              // fetch the full profile
+              self.fetchProfileJSON { result in
                 DispatchQueue.main.async {
-                    completion(.success((token: decoded.token, user: decoded.user)))
+                  switch result {
+                  case .success(let profile):
+                    DatabaseManager.shared.saveUser(profile)
+                    UserDefaults.standard.set(profile.id, forKey: "userId")
+                    completion(.success((token: loginResp.token, user: profile)))
+                  case .failure(let err):
+                    completion(.failure(err))
+                  }
                 }
+              }
             } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(.decodingError(error)))
-                }
+              DispatchQueue.main.async {
+                completion(.failure(.decodingError(error)))
+              }
             }
+          }.resume()
         }
-        .resume()
-    }
 }
 
 // MARK: – Trust & Redirects for loginSession
 extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
-    // Trust the test cert
+
+    // Trust the test cert unconditionally
     func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
@@ -854,17 +1013,18 @@ extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
         }
     }
 
-    // Prevent redirects on loginSession so we can see the 302
+    // Prevent redirects on our loginSession so we can see the 302
     func urlSession(_ session: URLSession,
                     task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void)
     {
-        if session == loginSession {
+       if session == self.loginSession {
             completionHandler(nil)
         } else {
             completionHandler(request)
         }
     }
 }
+
