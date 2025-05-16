@@ -11,6 +11,7 @@ struct NEMA_USAApp: App {
     @UIApplicationDelegateAdaptor(ServiceDelegate.self)
     var appDelegate
 
+    @AppStorage("laravelSessionToken") private var authToken: String?
     @State private var passwordResetToken: PasswordResetToken?
 
     init() {
@@ -20,6 +21,10 @@ struct NEMA_USAApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // ← force a fresh login on every cold start
+                .onAppear {
+                authToken = nil
+                }
                 .onOpenURL { url in
                     handleUniversalLink(url: url)
                 }

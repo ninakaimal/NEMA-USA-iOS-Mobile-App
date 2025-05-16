@@ -92,8 +92,14 @@ struct AccountView: View {
             userId          = p.id
         }
         .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
-          self.loadAllData()
+            NetworkManager.shared.fetchProfile { _ in }
+            self.loadAllData()
         }
+           // MARK: – Handle session expiration
+           .onReceive(NotificationCenter.default.publisher(for: .didSessionExpire)) { _ in
+               // drop our stored session, which will re-show the LoginView
+               authToken = nil
+           }
     }
     
     @ViewBuilder
@@ -201,8 +207,8 @@ struct AccountView: View {
                     InfoRow(
                         label: "Membership Expires",
                         value: cachedExpiryRaw.map(formatDate) ?? "Not a member"
-                    )
-                }
+                 )
+            }
                 
                 // 🔶 CACHE FIRST: only show renew controls if we *have* a cached expiry
                 if let expiryRaw = cachedExpiryRaw {
@@ -372,6 +378,10 @@ struct AccountView: View {
                         // 4) Exit editing mode
                         isEditingProfile = false
                         
+                        // 5) Re-fetch membership from the API so any server-side expiry
+                        //    isn’t accidentally cleared by a missing field in updatedProfile
+                        loadMembership()
+                        
                     case .failure(let err):
                         updateErrorMessage = err.localizedDescription
                         showErrorAlert = true
@@ -469,7 +479,7 @@ struct AccountView: View {
             }
         }
         private func loadMembership() {
-            guard let uid = profile?.id else { return }
+            guard (profile?.id) != nil else { return }
             NetworkManager.shared.fetchMembership { result in
                 DispatchQueue.main.async {
                     switch result {

@@ -252,15 +252,27 @@ struct EventRegistrationView: View {
     }
 
     private var purchaseButton: some View {
-        Button("Purchase") {
-            if acceptedTerms && totalAmount > 0 {
-                showPurchaseConfirmation = true
-            } else if emailAddressText.isEmpty {
-                paymentErrorMessage = "Email is required for ticket purchase."
-                showPaymentError = true
-            }
-        }
-        .disabled(!acceptedTerms || totalAmount == 0 || emailAddressText.isEmpty)
+                Button("Purchase") {
+                    if memberNameText.isEmpty {
+                        paymentErrorMessage = "Name is required."
+                        showPaymentError = true
+                    } else if emailAddressText.isEmpty {
+                        paymentErrorMessage = "Email is required."
+                        showPaymentError = true
+                    } else if phoneText.isEmpty {
+                        paymentErrorMessage = "Phone number is required."
+                        showPaymentError = true
+                    } else if !acceptedTerms {
+                        paymentErrorMessage = "You must accept the terms & conditions."
+                        showPaymentError = true
+                    } else if totalAmount == 0 {
+                        paymentErrorMessage = "You must select at least one ticket."
+                        showPaymentError = true
+                    } else {
+                        showPurchaseConfirmation = true
+                    }
+                }
+                .disabled(!acceptedTerms || totalAmount == 0)
         .padding().frame(maxWidth: .infinity)
         .background((acceptedTerms && totalAmount > 0 && !emailAddressText.isEmpty) ? Color.orange : Color.gray)
         .foregroundColor(.white).cornerRadius(10)

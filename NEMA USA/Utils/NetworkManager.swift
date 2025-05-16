@@ -736,6 +736,8 @@ final class NetworkManager: NSObject {
                     guard let http = resp as? HTTPURLResponse,
                           (200..<400).contains(http.statusCode)
                     else {
+                        let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No data"
+                        print("⚠️ Update Profile Error, status: \(String(describing: resp)), body: \(body)")
                         return DispatchQueue.main.async {
                             completion(.failure(.invalidResponse))
                         }
@@ -838,7 +840,7 @@ final class NetworkManager: NSObject {
         }
         // retry on 401…
         if http.statusCode == 401, retrying {
-          self.refreshToken { result in
+          return self.refreshToken { result in
             switch result {
             case .success(let newToken):
               var newReq = request
@@ -847,11 +849,11 @@ final class NetworkManager: NSObject {
             case .failure:
               DispatchQueue.main.async {
                 DatabaseManager.shared.clearSession()
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
                 completion(.failure(.invalidResponse))
               }
             }
           }
-          return
         }
         // non-2xx? log status + body
         guard (200..<300).contains(http.statusCode) else {
