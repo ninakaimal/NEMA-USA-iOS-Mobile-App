@@ -97,7 +97,7 @@ struct EventRegistrationView: View {
 
             // MARK: – Show payment errors
             .alert(
-                "Payment Error",
+                "Payment information",
                 isPresented: $showPaymentError
             ) {
                 Button("OK", role: .cancel) { }
@@ -254,10 +254,10 @@ struct EventRegistrationView: View {
     private var purchaseButton: some View {
                 Button("Purchase") {
                     if memberNameText.isEmpty {
-                        paymentErrorMessage = "Name is required."
+                        paymentErrorMessage = "Full Name is required."
                         showPaymentError = true
                     } else if emailAddressText.isEmpty {
-                        paymentErrorMessage = "Email is required."
+                        paymentErrorMessage = "Email address is required."
                         showPaymentError = true
                     } else if phoneText.isEmpty {
                         paymentErrorMessage = "Phone number is required."

@@ -59,17 +59,17 @@ struct AccountView: View {
                     )
                 }
         }
-        .sheet(isPresented: $showingRenewSheet) {
-            if let url = approvalURL {
-                PayPalView(
-                    approvalURL:        url,
-                    showPaymentError:   $showPaymentError,
-                    paymentErrorMessage:$paymentErrorMessage,
-                    showPurchaseSuccess:$showPurchaseSuccess,
-                    comments:           "Membership Renewal",
-                    successMessage:     "Your membership has been renewed."
-                )
-            }
+        .sheet(item: $approvalURL, onDismiss: {
+            approvalURL = nil  // Clear URL after dismissal
+        }) { url in
+            PayPalView(
+                approvalURL: url,
+                showPaymentError: $showPaymentError,
+                paymentErrorMessage: $paymentErrorMessage,
+                showPurchaseSuccess: $showPurchaseSuccess,
+                comments: "Membership Renewal",
+                successMessage: "Your membership has been renewed."
+            )
         }
         .alert(
             "Payment successful!",

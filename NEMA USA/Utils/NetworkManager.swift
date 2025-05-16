@@ -760,6 +760,7 @@ final class NetworkManager: NSObject {
                 }
               }
             }
+    
     /// POST `/fmly_mmbr` form-URL-encoded (one request per member)
     func updateFamily(
         _ members: [FamilyMember],
@@ -815,6 +816,7 @@ final class NetworkManager: NSObject {
         }
     }
 
+    
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(
         _ request: URLRequest,

@@ -69,14 +69,14 @@ struct LoginView: View {
                 TextField("", text: $email)
                     .placeholder(when: email.isEmpty) {
                         Text("Email")
-                            .foregroundColor(.orange.opacity(0.2))
+                            .foregroundColor(.orange.opacity(0.5))
                             .padding(.leading, 6)
                     }
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     .padding(12)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .overlay(RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.orange, lineWidth: 0.5))
                     .padding(.horizontal)
@@ -85,13 +85,13 @@ struct LoginView: View {
                 SecureField("", text: $password)
                     .placeholder(when: password.isEmpty) {
                         Text("Password")
-                            .foregroundColor(.orange.opacity(0.2))
+                            .foregroundColor(.orange.opacity(0.5))
                             .padding(.leading, 6)
                     }
                     .disableAutocorrection(true)
                     .autocapitalization(.none)
                     .padding(12)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .overlay(RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.orange, lineWidth: 0.5))
                     .padding(.horizontal)
@@ -181,7 +181,8 @@ struct LoginView: View {
                             self.isLoading = false
                             switch jwtResult {
                             case let .success((jwt, _)):
-                                print("🔐 [LoginView] got JWT = \(jwt)")
+                                //print("🔐 [LoginView] got JWT = \(jwt)")
+                                print("🔐 [LoginView] got JWT")
                                 DatabaseManager.shared.saveJwtApiToken(jwt)
                                 NotificationCenter.default.post(name: .didReceiveJWT, object: nil)
                                 // only now set authToken & dismiss
