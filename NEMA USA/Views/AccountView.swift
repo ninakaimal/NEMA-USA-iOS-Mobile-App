@@ -211,15 +211,16 @@ struct AccountView: View {
             }
                 
                 if let expiryRaw = cachedExpiryRaw {
+                    Text("")
                     Text("Your membership expires on \(formatDate(expiryRaw))")
                         .font(.footnote)
                         .foregroundColor(.orange)
                 } else {
-                    Text("  ")
-                    Text("Be a member to avail discounted event tickets.")
+                    Text("")
+                    Text("Be a member to avail discounted event tickets!")
                         .font(.subheadline)
                         .foregroundColor(.orange)
-                    
+                }
                     // 2b) package selector as a segmented control
                     Picker("", selection: $selectedPackageIndex) {
                         ForEach(membershipOptions.indices, id: \.self) { idx in
@@ -256,7 +257,6 @@ struct AccountView: View {
                         Spacer()
                     }
                 }
-            }
             .padding()
             .background(Color(.secondarySystemBackground))
             .cornerRadius(16)

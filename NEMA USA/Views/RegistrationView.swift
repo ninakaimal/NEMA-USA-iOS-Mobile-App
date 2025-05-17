@@ -180,6 +180,8 @@ struct RegistrationView: View {
                 // MARK: – Spouse info (optional)
                 Group {
                     TextField("Spouse Name", text: $spouseName)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
                         .padding(10)
                         .background(Color(.systemBackground))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange, lineWidth: 0.5))
@@ -263,7 +265,7 @@ struct RegistrationView: View {
             
             )
         }
-        .onAppear(perform: loadPackages)
+      //  .onAppear(perform: loadPackages) no longer adding membership
     }
     
     // MARK: – Email format validation
@@ -304,6 +306,7 @@ struct RegistrationView: View {
         }
         isSubmitting = true
         let token = UUID().uuidString
+        let selectedMembershipId = wantsMembership ? "\(membershipOptions[selectedPackageIndex].id)" : "0"
         
         NetworkManager.shared.register(
             name: name,
@@ -318,6 +321,7 @@ struct RegistrationView: View {
             spouseEmail: spouseEmail.isEmpty ? nil : spouseEmail,
             spouseDob: nil,
             joinAsMember: wantsMembership,
+            selectedMembershipId: selectedMembershipId,
             captchaToken: token
         ) { result in
             DispatchQueue.main.async {
@@ -325,6 +329,7 @@ struct RegistrationView: View {
                 switch result {
                 case .success((let t, _)):
                     apiToken = t
+                    UserDefaults.standard.removeObject(forKey: "membershipExpiryDate")
                     alertTitle = "Registration Successful"
                     alertMessage = "Welcome to NEMA! Your account has been created successfully."
                     showAlert = true

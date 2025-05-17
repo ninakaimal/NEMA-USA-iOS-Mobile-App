@@ -930,6 +930,7 @@ final class NetworkManager: NSObject {
         spouseEmail: String?,
         spouseDob: String?,
         joinAsMember: Bool,
+        selectedMembershipId: String,
         captchaToken: String,
         completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
     ) {
@@ -944,7 +945,8 @@ final class NetworkManager: NSObject {
             "email": email,
             "address": address,
             "password": password,
-            "password_confirmation": confirmPassword
+            "password_confirmation": confirmPassword,
+            "memb_pckg": selectedMembershipId
         ]
         
         if let spouseName = spouseName, !spouseName.isEmpty {
