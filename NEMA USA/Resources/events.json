@@ -1,13 +1,13 @@
 [
   {
     "id": "1",
-    "title": "NEMA Picnic 2025",
-    "description": "NEMA's annual summer picnic.",
-    "location": "To be announced",
+    "title": "NEMA Summer Picnic 2025",
+    "description": "Come join the summertime fun with NEMA Picnic 2025! Dosa Station with Ghee Roast, Masala Dosa Egg Dosa, and BBQ station with Hot Dogs, Soda and Ice Cream! Coem play volleyball, Throw ball, tug of war, flag football, and short distance races. Kids will enjoy face painting, kite flying, frisbee, bubbles, and soccer. Purchase tickets today!",
+    "location": "25 Ledge Rock Way, Acton, MA 01720",
     "category": "Social",
-    "date": "To be announced",
+    "date": "2025-07-26T18:00:00Z",
     "imageUrl": "Picnic2025.png",
-    "isTBD": true,
+    "isTBD": false,
     "isRegON": true,
     "eventlink": ""
   },

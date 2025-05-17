@@ -125,13 +125,13 @@ struct LoginView: View {
                 }
                 
                 // MARK: Forgot password
-                
-                NavigationLink(
-                    "Forgot Password?",
-                    destination: PasswordResetView(mode: .requestLink)
-                )
-                .padding(.top, 8)
-                .foregroundColor(.blue)
+                        HStack(spacing: 30) {
+                        NavigationLink("Create an Account", destination: RegistrationView())
+                        NavigationLink("Forgot Password?", destination: PasswordResetView(mode: .requestLink))
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
+                        .padding(.top, 24)
                 
                 // MARK: Footer
                 Text("© NEMA Boston, All rights reserved.")

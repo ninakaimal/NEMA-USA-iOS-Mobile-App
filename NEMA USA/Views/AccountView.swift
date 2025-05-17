@@ -210,11 +210,16 @@ struct AccountView: View {
                  )
             }
                 
-                // 🔶 CACHE FIRST: only show renew controls if we *have* a cached expiry
                 if let expiryRaw = cachedExpiryRaw {
                     Text("Your membership expires on \(formatDate(expiryRaw))")
                         .font(.footnote)
                         .foregroundColor(.orange)
+                } else {
+                    Text("  ")
+                    Text("Be a member to avail discounted event tickets.")
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
+                    
                     // 2b) package selector as a segmented control
                     Picker("", selection: $selectedPackageIndex) {
                         ForEach(membershipOptions.indices, id: \.self) { idx in
@@ -229,7 +234,7 @@ struct AccountView: View {
                     // 2c) “Renew” button
                     HStack {
                         Spacer()
-                        Button("Renew Membership") {
+                        Button("Update Membership") {
                             let pkg = membershipOptions[selectedPackageIndex]
                             let itemTitle = "NEMA Membership – \(pkg.years_of_validity)-year"
                             PaymentManager.shared.createOrder(

@@ -64,56 +64,56 @@ class InsecureTrustDelegate: NSObject, URLSessionDelegate {
 final class NetworkManager: NSObject {
     static let shared = NetworkManager()
     private override init() {}
-
+    
     /// For your JSON‐based register/login paths
     func loginJSON(
-      email: String,
-      password: String,
-      completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
+        email: String,
+        password: String,
+        completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
     ) {
-      let url = baseURL.appendingPathComponent("v1/login")
-      var req = URLRequest(url: url)
-      req.httpMethod = "POST"
-      req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-      req.httpBody = try? JSONEncoder().encode(["email": email, "password": password])
-
-      session.dataTask(with: req) { data, resp, err in
-        guard err == nil,
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let d = data
-        else {
-          return DispatchQueue.main.async {
-            completion(.failure(.invalidResponse))
-          }
-        }
-
-        do {
-          let loginResp = try JSONDecoder().decode(LoginResponse.self, from: d)
-          DatabaseManager.shared.saveJwtApiToken(loginResp.token)
-          DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
-
-          // now fetch the real UserProfile (including expiry date)
-          self.fetchProfileJSON { result in
-            DispatchQueue.main.async {
-              switch result {
-              case .success(let profile):
-                DatabaseManager.shared.saveUser(profile)
-                UserDefaults.standard.set(profile.id, forKey: "userId")
-                completion(.success((token: loginResp.token, user: profile)))
-              case .failure(let err):
-                completion(.failure(err))
-              }
+        let url = baseURL.appendingPathComponent("v1/login")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["email": email, "password": password])
+        
+        session.dataTask(with: req) { data, resp, err in
+            guard err == nil,
+                  let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let d = data
+            else {
+                return DispatchQueue.main.async {
+                    completion(.failure(.invalidResponse))
+                }
             }
-          }
-        } catch {
-          DispatchQueue.main.async {
-            completion(.failure(.decodingError(error)))
-          }
+            
+            do {
+                let loginResp = try JSONDecoder().decode(LoginResponse.self, from: d)
+                DatabaseManager.shared.saveJwtApiToken(loginResp.token)
+                DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
+                
+                // now fetch the real UserProfile (including expiry date)
+                self.fetchProfileJSON { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(let profile):
+                            DatabaseManager.shared.saveUser(profile)
+                            UserDefaults.standard.set(profile.id, forKey: "userId")
+                            completion(.success((token: loginResp.token, user: profile)))
+                        case .failure(let err):
+                            completion(.failure(err))
+                        }
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(.decodingError(error)))
+                }
+            }
         }
-      }
-      .resume()
+        .resume()
     }
-
+    
     /// Keep Laravel’s XSRF-TOKEN + session cookie automatically
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -123,7 +123,7 @@ final class NetworkManager: NSObject {
                           delegate: InsecureTrustDelegate(),
                           delegateQueue: nil)
     }()
-
+    
     /// A special session for login so we can catch the 302 redirect
     private lazy var loginSession: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -133,12 +133,12 @@ final class NetworkManager: NSObject {
                           delegate: self,
                           delegateQueue: nil)
     }()
-
+    
     /// Your front-end root
     private let baseURL = URL(string: "https://test.nemausa.org")!
-
+    
     // MARK: – Helpers
-
+    
     // Send reset password link
     func sendPasswordResetLink(email: String, completion: @escaping (Result<String, NetworkError>) -> Void) {
         fetchCSRFToken { result in
@@ -153,18 +153,18 @@ final class NetworkManager: NSObject {
                 var req = URLRequest(url: endpoint)
                 req.httpMethod = "POST"
                 req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+                
                 let params = [
                     "_token": csrfToken,
                     "email": email
                 ]
                 
                 req.httpBody = params.map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
-                                     .joined(separator: "&")
-                                     .data(using: .utf8)
-
+                    .joined(separator: "&")
+                    .data(using: .utf8)
+                
                 print("🚀 [sendPasswordResetLink] Sending request to: \(endpoint.absoluteString) with email: \(email)")
-
+                
                 self.session.dataTask(with: req) { data, response, error in
                     if let error = error {
                         print("❌ [sendPasswordResetLink] Error:", error.localizedDescription)
@@ -173,7 +173,7 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     guard let httpResponse = response as? HTTPURLResponse else {
                         print("❌ [sendPasswordResetLink] Non-HTTP Response")
                         DispatchQueue.main.async {
@@ -181,9 +181,9 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     print("🔄 [sendPasswordResetLink] HTTP Response Status Code: \(httpResponse.statusCode)")
-
+                    
                     guard (200..<400).contains(httpResponse.statusCode) else {
                         let bodyText = String(data: data ?? Data(), encoding: .utf8) ?? "No response body"
                         print("❌ [sendPasswordResetLink] HTTP Status Error \(httpResponse.statusCode): \(bodyText)")
@@ -192,7 +192,7 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     DispatchQueue.main.async {
                         print("✅ [sendPasswordResetLink] Reset link successfully sent.")
                         completion(.success("Reset link sent to your email."))
@@ -201,7 +201,7 @@ final class NetworkManager: NSObject {
             }
         }
     }
-
+    
     
     // Reset password function
     func resetPassword(token: String, newPassword: String, completion: @escaping (Result<String, NetworkError>) -> Void) {
@@ -217,20 +217,20 @@ final class NetworkManager: NSObject {
                 var req = URLRequest(url: endpoint)
                 req.httpMethod = "POST"
                 req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+                
                 let params = [
                     "_token": csrfToken,
                     "token": token,
                     "password": newPassword,
                     "cnf_password": newPassword
                 ]
-
+                
                 req.httpBody = params.map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
-                                     .joined(separator: "&")
-                                     .data(using: .utf8)
-
+                    .joined(separator: "&")
+                    .data(using: .utf8)
+                
                 print("🚀 [resetPassword] Sending request to: \(endpoint.absoluteString) with reset token: \(token)")
-
+                
                 self.session.dataTask(with: req) { data, response, error in
                     if let error = error {
                         print("❌ [resetPassword] Transport Error:", error.localizedDescription)
@@ -239,7 +239,7 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     guard let httpResponse = response as? HTTPURLResponse else {
                         print("❌ [resetPassword] Invalid response: Not HTTP.")
                         DispatchQueue.main.async {
@@ -247,9 +247,9 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     print("🔄 [resetPassword] HTTP Response Status Code:", httpResponse.statusCode)
-
+                    
                     guard (200..<400).contains(httpResponse.statusCode) else {
                         let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
                         print("❌ [resetPassword] HTTP Status Error \(httpResponse.statusCode): \(bodyText)")
@@ -258,9 +258,9 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     print("✅ [resetPassword] Password reset successful.")
-
+                    
                     DispatchQueue.main.async {
                         completion(.success("Your password has been reset successfully."))
                     }
@@ -268,7 +268,7 @@ final class NetworkManager: NSObject {
             }
         }
     }
-
+    
     /// 1) Fetch the hidden Laravel CSRF token from the form
     func fetchCSRFToken(completion: @escaping (Result<String, Error>) -> Void) {
         var comps = URLComponents(
@@ -303,9 +303,9 @@ final class NetworkManager: NSObject {
         }
         .resume()
     }
-
+    
     // MARK: – Option B: form-POST + HTML-scrape
-
+    
     /// 1) POST `/user_login`
     /// 2) inspect the 302 → then scrape `/profile`
     func login(
@@ -329,7 +329,7 @@ final class NetworkManager: NSObject {
                 req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
                 req.setValue("\(self.baseURL)/sign_in_form?previous=/profile",
                              forHTTPHeaderField: "Referer")
-
+                
                 func urlEncode(_ s: String) -> String {
                     s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
                 }
@@ -340,7 +340,7 @@ final class NetworkManager: NSObject {
                     "password=\(urlEncode(password))"
                 ].joined(separator: "&")
                 req.httpBody = body.data(using: .utf8)
-
+                
                 self.loginSession.dataTask(with: req) { _, resp, err in
                     if let e = err {
                         return DispatchQueue.main.async {
@@ -354,7 +354,7 @@ final class NetworkManager: NSObject {
                             completion(.failure(.invalidResponse))
                         }
                     }
-
+                    
                     // Laravel always 302s form-POST
                     if (300..<400).contains(http.statusCode) {
                         let location = http.value(forHTTPHeaderField: "Location") ?? ""
@@ -383,7 +383,7 @@ final class NetworkManager: NSObject {
                         }
                         return
                     }
-
+                    
                     // anything else → unexpected
                     DispatchQueue.main.async {
                         completion(.failure(.serverError(
@@ -395,7 +395,7 @@ final class NetworkManager: NSObject {
             }
         }
     }
-
+    
     /// Scrape `/profile` HTML → UserProfile
     func fetchProfile(completion: @escaping (Result<UserProfile, NetworkError>) -> Void) {
         let url = baseURL.appendingPathComponent("profile")
@@ -421,19 +421,19 @@ final class NetworkManager: NSObject {
                 let phone   = try doc.select("input[name=phone]").first()?.attr("value") ?? ""
                 let dob     = try doc.select("input[name=dateOfBirth]").first()?.attr("value") ?? ""
                 let address = try doc.select("textarea[name=address]").first()?.text() ?? ""
-
+                
                 // 1) try the (now-removed) input just in case
                 let inputRaw = try doc.select("input[name=exp_date]")
-                                     .first()?.attr("value") ?? ""
-
+                    .first()?.attr("value") ?? ""
+                
                 // 2) new fallback: the <span> immediately after the <label>
                 let spanRaw = try doc
-                  .select("label:containsOwn(Your Membership Will Expire On) + span.text-danger")
-                  .first()?.text() ?? ""
-
+                    .select("label:containsOwn(Your Membership Will Expire On) + span.text-danger")
+                    .first()?.text() ?? ""
+                
                 // 3) pick whichever is nonempty
                 let expiryRaw = !inputRaw.isEmpty ? inputRaw : spanRaw
-
+                
                 
                 let profile = UserProfile(
                     id:                   0,
@@ -458,7 +458,7 @@ final class NetworkManager: NSObject {
         }
         .resume()
     }
-
+    
     /// Scrape `/fmly_mmbr` HTML → [FamilyMember]
     func fetchFamily(completion: @escaping (Result<[FamilyMember], NetworkError>) -> Void) {
         guard DatabaseManager.shared.laravelSessionToken != nil else {
@@ -481,13 +481,13 @@ final class NetworkManager: NSObject {
             do {
                 let doc = try SwiftSoup.parse(html)
                 guard let container = try doc
-                        .select("div.register-form ul.mt-3.row")
-                        .first()
+                    .select("div.register-form ul.mt-3.row")
+                    .first()
                 else {
                     throw NSError(domain: "Parse", code: 0,
                                   userInfo: [NSLocalizedDescriptionKey: "Family list not found"])
                 }
-
+                
                 var members = [FamilyMember]()
                 let nameEls = try container.select("h5.col-9")
                 for nameEl in nameEls {
@@ -502,15 +502,15 @@ final class NetworkManager: NSObject {
                     else {
                         continue
                     }
-
+                    
                     let detailsUl = try span.nextElementSibling()
                     let lis       = try detailsUl?.select("li") ?? Elements()
-
+                    
                     var relVal: String?
                     var emailVal: String?
                     var dobVal: String?
                     var phoneVal: String?
-
+                    
                     for li in lis {
                         let txt   = try li.text()
                         let parts = txt
@@ -525,7 +525,7 @@ final class NetworkManager: NSObject {
                         default: break
                         }
                     }
-
+                    
                     members.append(.init(
                         id:           id,
                         name:         name,
@@ -535,7 +535,7 @@ final class NetworkManager: NSObject {
                         phone:        phoneVal
                     ))
                 }
-
+                
                 DispatchQueue.main.async {
                     completion(.success(members))
                 }
@@ -547,116 +547,116 @@ final class NetworkManager: NSObject {
         }
         .resume()
     }
-
+    
     // MARK: – JSON-based methods
     
     // 1) Public list of packages
     func fetchMembershipPackages(
-      completion: @escaping (Result<[MobileMembershipPackage], NetworkError>) -> Void
+        completion: @escaping (Result<[MobileMembershipPackage], NetworkError>) -> Void
     ) {
-      let url = baseURL.appendingPathComponent("v1/mobile/membership/packages")
-      var req = URLRequest(url: url)
-      req.httpMethod = "GET"
-      session.dataTask(with: req) { data, resp, err in
-        if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
-        guard
-          let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-          let d = data
-        else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
-        do {
-          let packs = try JSONDecoder().decode([MobileMembershipPackage].self, from: d)
-          DispatchQueue.main.async { completion(.success(packs)) }
-        } catch {
-          DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
-        }
-      }.resume()
-    }
-
-    // 2) Get the user’s current membership
-    func fetchMembership(
-      completion: @escaping (Result<Membership, NetworkError>) -> Void
-    ) {
-      guard let jwt = DatabaseManager.shared.jwtApiToken else {
-        return completion(.failure(.invalidResponse))
-      }
-      let url = baseURL.appendingPathComponent("v1/mobile/membership")
-      var req = URLRequest(url: url)
-      req.httpMethod = "GET"
-      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-      session.dataTask(with: req) { data, resp, err in
-        if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
-        guard
-          let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-          let d = data
-        else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
-        do {
-          let m = try JSONDecoder().decode(Membership.self, from: d)
-          DispatchQueue.main.async { completion(.success(m)) }
-        } catch {
-          DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
-        }
-      }.resume()
-    }
-
-    // 3) Create membership
-    func createMembership(
-      packageId: Int,
-      completion: @escaping (Result<Membership, NetworkError>) -> Void
-    ) {
-      guard let jwt = DatabaseManager.shared.jwtApiToken else {
-        return completion(.failure(.invalidResponse))
-      }
-      let url = baseURL.appendingPathComponent("v1/mobile/membership")
-      var req = URLRequest(url: url)
-      req.httpMethod = "POST"
-      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      let body = ["package_id": packageId]
-      req.httpBody = try? JSONEncoder().encode(body)
-      performRequest(req) { result in
-        switch result {
-        case .failure(let e): completion(.failure(e))
-        case .success(let data):
-          do {
-            let m = try JSONDecoder().decode(Membership.self, from: data)
-            completion(.success(m))
-          } catch {
-            completion(.failure(.decodingError(error)))
-          }
-        }
-      }
-    }
-
-    // 4) Renew membership
-    func renewMembership(
-      packageId: Int,
-      completion: @escaping (Result<Membership, NetworkError>) -> Void
-    ) {
-      guard let jwt = DatabaseManager.shared.jwtApiToken else {
-        return completion(.failure(.invalidResponse))
-      }
-      let url = baseURL.appendingPathComponent("v1/mobile/membership/renew")
-      var req = URLRequest(url: url)
-      req.httpMethod = "POST"
-      req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      let body = ["package_id": packageId]
-      req.httpBody = try? JSONEncoder().encode(body)
-      performRequest(req) { result in
-        switch result {
-        case .failure(let e): completion(.failure(e))
-        case .success(let data):
-          do {
-            let m = try JSONDecoder().decode(Membership.self, from: data)
-            completion(.success(m))
-          } catch {
-            completion(.failure(.decodingError(error)))
-          }
-        }
-      }
+        let url = baseURL.appendingPathComponent("v1/mobile/membership/packages")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        session.dataTask(with: req) { data, resp, err in
+            if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
+            guard
+                let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                let d = data
+            else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
+            do {
+                let packs = try JSONDecoder().decode([MobileMembershipPackage].self, from: d)
+                DispatchQueue.main.async { completion(.success(packs)) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+            }
+        }.resume()
     }
     
-
+    // 2) Get the user’s current membership
+    func fetchMembership(
+        completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let url = baseURL.appendingPathComponent("v1/mobile/membership")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        session.dataTask(with: req) { data, resp, err in
+            if let e = err { return DispatchQueue.main.async { completion(.failure(.serverError(e.localizedDescription))) } }
+            guard
+                let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                let d = data
+            else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
+            do {
+                let m = try JSONDecoder().decode(Membership.self, from: d)
+                DispatchQueue.main.async { completion(.success(m)) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+            }
+        }.resume()
+    }
+    
+    // 3) Create membership
+    func createMembership(
+        packageId: Int,
+        completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let url = baseURL.appendingPathComponent("v1/mobile/membership")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = ["package_id": packageId]
+        req.httpBody = try? JSONEncoder().encode(body)
+        performRequest(req) { result in
+            switch result {
+            case .failure(let e): completion(.failure(e))
+            case .success(let data):
+                do {
+                    let m = try JSONDecoder().decode(Membership.self, from: data)
+                    completion(.success(m))
+                } catch {
+                    completion(.failure(.decodingError(error)))
+                }
+            }
+        }
+    }
+    
+    // 4) Renew membership
+    func renewMembership(
+        packageId: Int,
+        completion: @escaping (Result<Membership, NetworkError>) -> Void
+    ) {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let url = baseURL.appendingPathComponent("v1/mobile/membership/renew")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = ["package_id": packageId]
+        req.httpBody = try? JSONEncoder().encode(body)
+        performRequest(req) { result in
+            switch result {
+            case .failure(let e): completion(.failure(e))
+            case .success(let data):
+                do {
+                    let m = try JSONDecoder().decode(Membership.self, from: data)
+                    completion(.success(m))
+                } catch {
+                    completion(.failure(.decodingError(error)))
+                }
+            }
+        }
+    }
+    
+    
     /// GET /api/user → JSON User object including membershipExpiryDate & id
     func fetchProfileJSON(completion: @escaping (Result<UserProfile, NetworkError>) -> Void) {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
@@ -667,7 +667,7 @@ final class NetworkManager: NSObject {
         req.httpMethod = "GET"
         req.addValue("application/json", forHTTPHeaderField: "Accept")
         req.addValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-
+        
         session.dataTask(with: req) { data, resp, err in
             if let e = err {
                 return DispatchQueue.main.async {
@@ -697,7 +697,7 @@ final class NetworkManager: NSObject {
         }
         .resume()
     }
-
+    
     /// POST `/profile` form-URL-encoded
     func updateProfile(
         name: String,
@@ -713,7 +713,7 @@ final class NetworkManager: NSObject {
                 var req = URLRequest(url: self.baseURL.appendingPathComponent("profile"))
                 req.httpMethod = "POST"
                 req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+                
                 let userId = DatabaseManager.shared.currentUser?.id ?? 0
                 let params = [
                     "_token": token,
@@ -726,7 +726,7 @@ final class NetworkManager: NSObject {
                     .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
                     .joined(separator: "&")
                     .data(using: .utf8)
-
+                
                 self.session.dataTask(with: req) { data, resp, err in
                     if let err = err {
                         return DispatchQueue.main.async {
@@ -742,24 +742,24 @@ final class NetworkManager: NSObject {
                             completion(.failure(.invalidResponse))
                         }
                     }
-
+                    
                     // 3) now fetch the *JSON* user — this has the full profile + expiry
                     self.fetchProfileJSON { result in
-                      DispatchQueue.main.async {
-                        switch result {
-                        case .success(let freshProfile):
-                          completion(.success(freshProfile))
-
-                        case .failure(let err):
-                          completion(.failure(err))
+                        DispatchQueue.main.async {
+                            switch result {
+                            case .success(let freshProfile):
+                                completion(.success(freshProfile))
+                                
+                            case .failure(let err):
+                                completion(.failure(err))
+                            }
                         }
-                      }
                     }
-                  }
-                  .resume()
                 }
-              }
+                .resume()
             }
+        }
+    }
     
     /// POST `/fmly_mmbr` form-URL-encoded (one request per member)
     func updateFamily(
@@ -773,13 +773,13 @@ final class NetworkManager: NSObject {
             case .success(let token):
                 let group = DispatchGroup()
                 var anyError: NetworkError?
-
+                
                 for m in members {
                     group.enter()
                     var req = URLRequest(url: self.baseURL.appendingPathComponent("fmly_mmbr"))
                     req.httpMethod = "POST"
                     req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+                    
                     let params: [String: String] = [
                         "_token":       token,
                         "fname":        m.name,
@@ -793,7 +793,7 @@ final class NetworkManager: NSObject {
                         .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
                         .joined(separator: "&")
                         .data(using: .utf8)
-
+                    
                     self.session.dataTask(with: req) { _, resp, err in
                         if let err = err {
                             anyError = .serverError(err.localizedDescription)
@@ -804,7 +804,7 @@ final class NetworkManager: NSObject {
                     }
                     .resume()
                 }
-
+                
                 group.notify(queue: .main) {
                     if let err = anyError {
                         completion(.failure(err))
@@ -815,7 +815,7 @@ final class NetworkManager: NSObject {
             }
         }
     }
-
+    
     
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(
@@ -823,60 +823,60 @@ final class NetworkManager: NSObject {
         retrying: Bool = true,
         completion: @escaping (Result<Data, NetworkError>) -> Void
     ) {
-      session.dataTask(with: request) { data, resp, err in
-        // transport error
-        if let e = err {
-          print("⚠️ [NetworkManager] transport error:", e.localizedDescription)
-          return DispatchQueue.main.async {
-            completion(.failure(.serverError(
-              "\(e.localizedDescription). Please check your connection."
-            )))
-          }
-        }
-        // must be HTTP
-        guard let http = resp as? HTTPURLResponse else {
-          print("⚠️ [NetworkManager] non-HTTP response:", resp ?? "nil")
-          return DispatchQueue.main.async {
-            completion(.failure(.serverError("Unexpected response format.")))
-          }
-        }
-        // retry on 401…
-        if http.statusCode == 401, retrying {
-          return self.refreshToken { result in
-            switch result {
-            case .success(let newToken):
-              var newReq = request
-              newReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
-              self.performRequest(newReq, retrying: false, completion: completion)
-            case .failure:
-              DispatchQueue.main.async {
-                DatabaseManager.shared.clearSession()
-                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
-                completion(.failure(.invalidResponse))
-              }
+        session.dataTask(with: request) { data, resp, err in
+            // transport error
+            if let e = err {
+                print("⚠️ [NetworkManager] transport error:", e.localizedDescription)
+                return DispatchQueue.main.async {
+                    completion(.failure(.serverError(
+                        "\(e.localizedDescription). Please check your connection."
+                    )))
+                }
             }
-          }
+            // must be HTTP
+            guard let http = resp as? HTTPURLResponse else {
+                print("⚠️ [NetworkManager] non-HTTP response:", resp ?? "nil")
+                return DispatchQueue.main.async {
+                    completion(.failure(.serverError("Unexpected response format.")))
+                }
+            }
+            // retry on 401…
+            if http.statusCode == 401, retrying {
+                return self.refreshToken { result in
+                    switch result {
+                    case .success(let newToken):
+                        var newReq = request
+                        newReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                        self.performRequest(newReq, retrying: false, completion: completion)
+                    case .failure:
+                        DispatchQueue.main.async {
+                            DatabaseManager.shared.clearSession()
+                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            completion(.failure(.invalidResponse))
+                        }
+                    }
+                }
+            }
+            // non-2xx? log status + body
+            guard (200..<300).contains(http.statusCode) else {
+                let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
+                print("⚠️ [NetworkManager] HTTP \(http.statusCode) →", bodyText)
+                return DispatchQueue.main.async {
+                    completion(.failure(.serverError("HTTP \(http.statusCode)")))
+                }
+            }
+            // data must exist
+            guard let d = data else {
+                print("⚠️ [NetworkManager] HTTP \(http.statusCode) but no data")
+                return DispatchQueue.main.async {
+                    completion(.failure(.invalidResponse))
+                }
+            }
+            DispatchQueue.main.async { completion(.success(d)) }
         }
-        // non-2xx? log status + body
-        guard (200..<300).contains(http.statusCode) else {
-          let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-          print("⚠️ [NetworkManager] HTTP \(http.statusCode) →", bodyText)
-          return DispatchQueue.main.async {
-            completion(.failure(.serverError("HTTP \(http.statusCode)")))
-          }
-        }
-        // data must exist
-        guard let d = data else {
-          print("⚠️ [NetworkManager] HTTP \(http.statusCode) but no data")
-          return DispatchQueue.main.async {
-            completion(.failure(.invalidResponse))
-          }
-        }
-        DispatchQueue.main.async { completion(.success(d)) }
-      }
-      .resume()
+        .resume()
     }
-
+    
     /// POST `/refresh-token`
     private func refreshToken(completion: @escaping (Result<String, NetworkError>) -> Void) {
         guard let refresh = DatabaseManager.shared.refreshToken else {
@@ -887,7 +887,7 @@ final class NetworkManager: NSObject {
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(["refreshToken": refresh])
-
+        
         session.dataTask(with: req) { data, resp, err in
             if let e = err {
                 return DispatchQueue.main.async {
@@ -915,8 +915,8 @@ final class NetworkManager: NSObject {
         }
         .resume()
     }
-
-    /// JSON POST `/register`
+    
+    /// JSON POST `v1/user/create`
     func register(
         name: String,
         phone: String,
@@ -933,72 +933,90 @@ final class NetworkManager: NSObject {
         captchaToken: String,
         completion: @escaping (Result<(token: String, user: UserProfile), NetworkError>) -> Void
     ) {
-        let endpoint = baseURL.appendingPathComponent("register")
+        let endpoint = baseURL.appendingPathComponent("v1/user/create")
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any?] = [
-            "name":            name,
-            "phone":           phone,
-            "email":           email,
-            "confirmEmail":    confirmEmail,
-            "password":        password,
-            "confirmPassword": confirmPassword,
-            "dateOfBirth":     dateOfBirth,
-            "address":         address,
-            "spouseName":      spouseName,
-            "spouseEmail":     spouseEmail,
-            "spouseDob":       spouseDob,
-            "joinAsMember":    joinAsMember,
-            "captchaToken":    captchaToken
+        
+        var body: [String: Any] = [
+            "name": name,
+            "phone": phone,
+            "email": email,
+            "address": address,
+            "password": password,
+            "password_confirmation": confirmPassword
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
+        
+        if let spouseName = spouseName, !spouseName.isEmpty {
+            body["spouse_name"] = spouseName
+        }
+        if let spouseEmail = spouseEmail, !spouseEmail.isEmpty {
+            body["spouse_email"] = spouseEmail
+        }
+        
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
+        
         session.dataTask(with: req) { data, resp, err in
             if let e = err {
-                return DispatchQueue.main.async {
-                    completion(.failure(.serverError(
-                        "\(e.localizedDescription). Please check your network."
-                    )))
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError(e.localizedDescription)))
                 }
+                return
             }
-            guard let http  = resp as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let bytes = data
-            else {
-                return DispatchQueue.main.async {
+            
+            guard let http = resp as? HTTPURLResponse, let bytes = data else {
+                DispatchQueue.main.async {
                     completion(.failure(.invalidResponse))
                 }
+                return
             }
-            do {
-              // decode only tokens
-              let loginResp = try JSONDecoder().decode(LoginResponse.self, from: bytes)
-              DatabaseManager.shared.saveJwtApiToken(loginResp.token)
-              DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
-
-              // fetch the full profile
-              self.fetchProfileJSON { result in
-                DispatchQueue.main.async {
-                  switch result {
-                  case .success(let profile):
-                    DatabaseManager.shared.saveUser(profile)
-                    UserDefaults.standard.set(profile.id, forKey: "userId")
-                    completion(.success((token: loginResp.token, user: profile)))
-                  case .failure(let err):
-                    completion(.failure(err))
-                  }
+            
+            if !(200..<300).contains(http.statusCode) {
+                // Preserve existing logging:
+                let bodyText = String(data: bytes, encoding: .utf8) ?? "No response"
+                print("⚠️ [Registration Error] HTTP \(http.statusCode): \(bodyText)")
+                
+                // ✅ Add Laravel Validation error parsing:
+                if http.statusCode == 422,
+                   let errorJson = try? JSONSerialization.jsonObject(with: bytes, options: []) as? [String: Any],
+                   let errorDict = errorJson["errors"] as? [String: [String]] {
+                    let messages = errorDict.values.flatMap { $0 }.joined(separator: ", ")
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError(messages)))
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        completion(.failure(.invalidResponse))
+                    }
                 }
-              }
-            } catch {
-              DispatchQueue.main.async {
-                completion(.failure(.decodingError(error)))
-              }
+                return
             }
-          }.resume()
-        }
+            
+            do {
+                let loginResp = try JSONDecoder().decode(LoginResponse.self, from: bytes)
+                DatabaseManager.shared.saveJwtApiToken(loginResp.token)
+                DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
+                
+                self.fetchProfileJSON { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(let profile):
+                            DatabaseManager.shared.saveUser(profile)
+                            UserDefaults.standard.set(profile.id, forKey: "userId")
+                            completion(.success((token: loginResp.token, user: profile)))
+                        case .failure(let err):
+                            completion(.failure(err))
+                        }
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(.decodingError(error)))
+                }
+            }
+        }.resume()
+    }
 }
-
 // MARK: – Trust & Redirects for loginSession
 extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
 
