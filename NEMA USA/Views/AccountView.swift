@@ -25,6 +25,7 @@ struct AccountView: View {
     @State private var isLoadingFamily = false
     @State private var showLogoutConfirmation = false
     
+    @State private var membershipId: Int?
     @State private var membershipOptions: [MobileMembershipPackage] = []
     @State private var selectedPackageIndex = 2 // default to 5 years
     @State private var showingRenewSheet     = false
@@ -238,9 +239,29 @@ struct AccountView: View {
                         Button("Update Membership") {
                             let pkg = membershipOptions[selectedPackageIndex]
                             let itemTitle = "NEMA Membership – \(pkg.years_of_validity)-year"
+                            
+                            // Explicitly determining the correct membershipType
+                            let membershipType = cachedExpiryRaw == nil ? "membership" : "renew"
+
+                            // ADD DETAILED LOGGING HERE
+                            print("MEMBER_RENEWAL_TRACE: Button Tapped")
+                            print("MEMBER_RENEWAL_TRACE: Current profile.id = \(profile?.id ?? -1)") // CRITICAL: What is this value?
+                            print("MEMBER_RENEWAL_TRACE: Current @AppStorage(userId) = \(self.userId)") // Compare with AppStorage
+                            print("MEMBER_RENEWAL_TRACE: Email from profile = \(profile?.email ?? "nil")")
+                            print("MEMBER_RENEWAL_TRACE: Name from profile = \(profile?.name ?? "nil")")
+                            
+                            print("Membership type: ", membershipType)
                             PaymentManager.shared.createOrder(
                                 amount: "\(Int(pkg.amount))",
-                                eventTitle: itemTitle
+                                eventTitle: itemTitle,
+                                eventID: nil,
+                                email: profile?.email ?? "",
+                                name: profile?.name ?? "",
+                                phone: profile?.phone ?? "",
+                                membershipType: membershipType,
+                                packageId: pkg.id,
+                                packageYears: pkg.years_of_validity,
+                                userId: profile?.id
                             ) { result in
                                 switch result {
                                 case .success(let url):
@@ -491,6 +512,7 @@ struct AccountView: View {
                     case .success(let membership):
                         // 🔶 CACHE FIRST: overwrite only our stored raw date
                         cachedExpiryRaw = membership.exp_date
+                        membershipId = membership.id
                         // if you want the UI state to immediately reflect it as well:
                         if var p = profile {
                             p.membershipExpiryDate = membership.exp_date

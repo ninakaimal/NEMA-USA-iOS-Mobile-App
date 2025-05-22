@@ -197,27 +197,6 @@ struct RegistrationView: View {
                         .padding(.horizontal)
                 }
                 
-                //        // MARK: – Membership toggle
-                //        Toggle("Join NEMA as a member", isOn: $wantsMembership)
-                //          .toggleStyle(SwitchToggleStyle(tint: .orange))
-                
-                //        // MARK: – Membership options
-                //        if wantsMembership {
-                //          if membershipOptions.isEmpty {
-                //            ProgressView("Loading options…")
-                //          } else {
-                //            Picker("", selection: $selectedPackageIndex) {
-                //              ForEach(membershipOptions.indices, id: \.self) { idx in
-                //                let pkg = membershipOptions[idx]
-                //                Text("\(pkg.years_of_validity)-year $\(Int(pkg.amount))")
-                //                  .tag(idx)
-                //              }
-                //            }
-                //            .pickerStyle(SegmentedPickerStyle())
-                //            .padding(.vertical)
-                //          }
-                //        }
-                
                 // MARK: – Informational text
                 VStack(alignment: .leading, spacing: 4) {
                     Text("An account is required for registering for competitions such as Drishya and will help you track your registrations.")

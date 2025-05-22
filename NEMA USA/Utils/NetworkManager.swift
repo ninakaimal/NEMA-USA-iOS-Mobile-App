@@ -98,6 +98,11 @@ final class NetworkManager: NSObject {
                         switch result {
                         case .success(let profile):
                             DatabaseManager.shared.saveUser(profile)
+                            // Ensure these lines are included: Remove
+                            UserDefaults.standard.set(profile.name, forKey: "memberName")
+                            UserDefaults.standard.set(profile.email, forKey: "emailAddress")
+                            UserDefaults.standard.set(profile.phone, forKey: "phoneNumber")
+                            
                             UserDefaults.standard.set(profile.id, forKey: "userId")
                             completion(.success((token: loginResp.token, user: profile)))
                         case .failure(let err):

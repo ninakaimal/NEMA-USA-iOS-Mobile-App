@@ -53,23 +53,27 @@ struct PayPalView: UIViewRepresentable {
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
 
             guard let url = navigationAction.request.url else {
+                print("🔍 Navigation action URL is nil")
                 decisionHandler(.allow)
                 return
             }
-
+            print("🔍 WebView navigating to URL:", url.absoluteString)
+            
             if url.host?.contains("test.nemausa.org") == true,
                let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                let payerId = comps.queryItems?.first(where: { $0.name == "PayerID" })?.value {
-                // Explicitly call backend to confirm payment
-                 confirmPaymentOnBackend(
+
+                print("✅ Detected PayPal payment callback. PaymentId: \(paymentId), PayerID: \(payerId)")
+                
+                // 🔥 Pass the dynamically navigated URL here!
+                confirmPaymentOnBackend(
                     paymentId: paymentId,
-                    payerId:   payerId,
-                    email:     UserDefaults.standard.string(forKey: "emailAddress") ?? "",
-                    name:      UserDefaults.standard.string(forKey: "memberName") ?? "",
-                    phone:     UserDefaults.standard.string(forKey: "phoneNumber") ?? "",
-                    comments:  parent.comments
+                    payerId: payerId,
+                    callbackURL: url, // ✅ Critical fix: Pass actual callback URL
+                    comments: parent.comments
                 )
+                
                 decisionHandler(.cancel)
                 return
             }
@@ -77,65 +81,106 @@ struct PayPalView: UIViewRepresentable {
             decisionHandler(.allow)
         }
 
-        private func confirmPaymentOnBackend(paymentId: String, payerId: String, email: String, name: String, phone: String, comments: String) {
-            var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
-            components.queryItems = [
-                URLQueryItem(name: "paymentId", value: paymentId),
-                URLQueryItem(name: "PayerID", value: payerId),
-                URLQueryItem(name: "name", value: name),
-                URLQueryItem(name: "email", value: email),
-                URLQueryItem(name: "phone", value: phone),
-                URLQueryItem(name: "comments", value: comments)
-            ]
+        // 🔥 ADD THIS METHOD BELOW:
+            func webView(_ webView: WKWebView,
+                         didReceive challenge: URLAuthenticationChallenge,
+                         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
 
-            guard let url = components.url else {
-                print("❌ Invalid URL for backend capture call")
+                if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+                   challenge.protectionSpace.host.contains("test.nemausa.org"),
+                   let serverTrust = challenge.protectionSpace.serverTrust {
+                    print("⚠️ Bypassing SSL for domain:", challenge.protectionSpace.host)
+                    completionHandler(.useCredential, URLCredential(trust: serverTrust))
+                } else {
+                    completionHandler(.performDefaultHandling, nil)
+                }
+            }
+ 
+        private func confirmPaymentOnBackend(paymentId: String, payerId: String, callbackURL: URL, comments: String) {
+            guard let comps = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
+                parent.paymentErrorMessage = "Invalid callback URL"
+                parent.showPaymentError = true
                 return
             }
 
+            // Dynamically map all query items from callbackURL
+            var queryItemsDict = Dictionary(uniqueKeysWithValues: comps.queryItems?.map { ($0.name, $0.value ?? "") } ?? [])
+            
+            if let idValue = queryItemsDict["id"] {
+                print("🔍 Dynamically included 'id':", idValue)
+            } else {
+                print("⚠️ 'id' parameter not included in queryItemsDict")
+            }
+
+            // Explicitly set essential payment params
+            queryItemsDict["paymentId"] = paymentId
+            queryItemsDict["PayerID"] = payerId
+            queryItemsDict["name"] = UserDefaults.standard.string(forKey: "memberName") ?? ""
+            queryItemsDict["email"] = UserDefaults.standard.string(forKey: "emailAddress") ?? ""
+            queryItemsDict["phone"] = UserDefaults.standard.string(forKey: "phoneNumber") ?? ""
+            queryItemsDict["comments"] = comments
+            queryItemsDict["item"] = comments
+
+            // Build final URL
+              var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
+              components.queryItems = queryItemsDict.map { URLQueryItem(name: $0.key, value: $0.value) }
+
+              guard let url = components.url else {
+                  parent.paymentErrorMessage = "Invalid URL for backend capture call"
+                  parent.showPaymentError = true
+                  return
+              }
+
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
-            request.addValue("text/html", forHTTPHeaderField: "Accept")
+            request.addValue("application/json", forHTTPHeaderField: "Accept")
+            
+            print("🔍 Initiating backend confirmation at URL:", url.absoluteString)
 
-            urlSession.dataTask(with: request) { data, response, error in
-                guard error == nil, let httpResponse = response as? HTTPURLResponse, let _ = data else {
-                    DispatchQueue.main.async {
+                urlSession.dataTask(with: request) { data, response, error in
+                    guard error == nil, let httpResponse = response as? HTTPURLResponse else {
+                        DispatchQueue.main.async {
                         print("❌ Backend call failed: \(error!.localizedDescription)")
-                        self.parent.paymentErrorMessage = error!.localizedDescription
-                        self.parent.showPaymentError = true
+                            self.parent.paymentErrorMessage = error?.localizedDescription ?? "Unknown error"
+                            self.parent.showPaymentError = true
+                        }
+                        return
                     }
-                    return
-                }
 
-                if (300...399).contains(httpResponse.statusCode),
-                   let redirectLocation = httpResponse.allHeaderFields["Location"] as? String,
-                   let redirectURL = URL(string: redirectLocation) {
+                print("🔍 Backend response status code:", httpResponse.statusCode)
+                
+                    if (300...399).contains(httpResponse.statusCode),
+                       let redirectLocation = httpResponse.allHeaderFields["Location"] as? String,
+                       let redirectURL = URL(string: redirectLocation) {
 
                     // ✅ Follow redirect explicitly
-                    self.followRedirect(redirectURL)
-                } else if (200...299).contains(httpResponse.statusCode) {
-                    DispatchQueue.main.async {
-                        print("✅ Payment captured successfully (HTTP 200)")
-                        self.parent.showPurchaseSuccess = true
+                        print("🔍 Following redirect to:", redirectURL.absoluteString)
+                        self.followRedirect(redirectURL)
+                    
+                    } else if (200...299).contains(httpResponse.statusCode) {
+                        DispatchQueue.main.async {
+                            print("✅ Payment captured successfully (HTTP 200)")
+                            self.parent.showPurchaseSuccess = true
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            print("❌ Backend returned HTTP \(httpResponse.statusCode)")
+                            self.parent.paymentErrorMessage = "HTTP Error \(httpResponse.statusCode)"
+                            self.parent.showPaymentError = true
+                        }
                     }
-                } else {
-                    DispatchQueue.main.async {
-                        print("❌ Backend returned HTTP \(httpResponse.statusCode)")
-                        self.parent.paymentErrorMessage = "HTTP Error \(httpResponse.statusCode)"
-                        self.parent.showPaymentError = true
-                    }
-                }
-            }.resume()
-        }
+                }.resume()
+            }
 
         private func followRedirect(_ url: URL) {
+            print("🔍 Initiating redirect request to:", url.absoluteString)
             var redirectRequest = URLRequest(url: url)
             redirectRequest.httpMethod = "GET"
 
             urlSession.dataTask(with: redirectRequest) { data, response, error in
                 guard error == nil, let httpResponse = response as? HTTPURLResponse else {
                     DispatchQueue.main.async {
-                        print("❌ Redirect failed: \(error!.localizedDescription)")
+                        print("❌ Redirect request failed: \(error!.localizedDescription)")
                         self.parent.paymentErrorMessage = error!.localizedDescription
                         self.parent.showPaymentError = true
                     }

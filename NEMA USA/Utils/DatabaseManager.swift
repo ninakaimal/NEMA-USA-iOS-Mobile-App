@@ -96,5 +96,8 @@ final class DatabaseManager {
         defaults.removeObject(forKey: refreshTokenKey)
         defaults.removeObject(forKey: userKey)
         defaults.removeObject(forKey: familyKey)
+        defaults.removeObject(forKey: "membershipExpiryDate")
+        defaults.removeObject(forKey: "userId")
+        print("[DatabaseManager] Cleared all session and user-specific AppStorage keys.")
     }
 }

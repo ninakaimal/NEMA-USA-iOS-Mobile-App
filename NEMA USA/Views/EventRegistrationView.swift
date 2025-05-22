@@ -124,7 +124,7 @@ struct EventRegistrationView: View {
                 showPaymentError:   $showPaymentError,
                 paymentErrorMessage:$paymentErrorMessage,
                 showPurchaseSuccess:$showPurchaseSuccess,
-                comments:           "Mobile App Ticket Purchase",
+                comments:           "\(event.title) Tickets",
                 successMessage:     "Your tickets have been purchased!"
               )
             }
@@ -137,12 +137,18 @@ struct EventRegistrationView: View {
                 else {
                     return
                 }
-
+                
+                let eventId = UserDefaults.standard.integer(forKey: "eventId")
+                let hasEventId = eventId != 0
                 PaymentManager.shared.captureOrder(
                     payerId: payerId,
                     memberName: memberNameText,
                     email: emailAddressText,
-                    phone: phoneText
+                    phone: phoneText,
+                    comments: "\(event.title) Tickets",
+                    type: hasEventId ? "ticket" : nil,  // Ticket if eventId exists, nil otherwise
+                    id: hasEventId ? UserDefaults.standard.integer(forKey: "ticketPurchaseId") : nil,
+                    eventId: hasEventId ? eventId : nil
                 ) { result in
                     DispatchQueue.main.async {
                         switch result {
@@ -283,16 +289,32 @@ struct EventRegistrationView: View {
         memberNameText = UserDefaults.standard.string(forKey: "memberName") ?? ""
         emailAddressText = UserDefaults.standard.string(forKey: "emailAddress") ?? ""
         phoneText = UserDefaults.standard.string(forKey: "phoneNumber") ?? ""
+        
+        // Debug print - Remove
+        print("Loaded member info from cache:",
+              "Name:", memberNameText,
+              "Email:", emailAddressText,
+              "Phone:", phoneText)
     }
 
     private func initiateMobilePayment() {
-        PaymentManager.shared.createOrder(amount: "\(totalAmount)", eventTitle: event.title) { result in
+        UserDefaults.standard.set(event.id, forKey: "eventId")
+        UserDefaults.standard.set(event.title, forKey: "item")
+        
+        PaymentManager.shared.createOrder(
+            amount: "\(totalAmount)",
+            eventTitle: event.title,
+            eventID: Int(event.id),  // ✅ explicitly passed as Int
+            email: emailAddressText,
+            name: memberNameText,
+            phone: phoneText
+        ) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let url):
                     self.approvalURL = url
                 case .failure(let error):
-                    paymentErrorMessage = "Could not create order: \(error)"
+                    paymentErrorMessage = "Could not create order: \(error.localizedDescription)"
                     showPaymentError = true
                 }
             }
