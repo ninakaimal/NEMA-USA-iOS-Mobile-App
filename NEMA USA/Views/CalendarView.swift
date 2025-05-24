@@ -3,12 +3,13 @@
 //  NEMA USA
 //  Created by Nina on 4/16/25.
 //  Updated by Sajith on 4/22/25
-//
+//  Further Updated by Sajith on 5/22/25 for EventRepository integration
 
 import SwiftUI
 
 struct CalendarView: View {
-    @StateObject private var loader        = EventLoader()
+    // 1. Use EventRepository
+    @StateObject private var eventRepository = EventRepository()
     @State private var selectedDate: Date? = Date()
     @State private var displayedMonth      = Calendar.current.component(.month, from: Date())
     @State private var displayedYear       = Calendar.current.component(.year,  from: Date())
@@ -28,22 +29,46 @@ struct CalendarView: View {
                     VStack(spacing: 16) {
                         // BannerView() <- don't show top banner for this page
                         Spacer().frame(height: 16)
-
                         calendarHeader
-
                         calendarGrid
-                            .padding(.horizontal)
-
+                        .padding(.horizontal)
                         Divider()
-
+                        // 2. Added Loading and Error State Display (Simplified)
+                        if eventRepository.isLoading && events(on: selectedDate ?? Date()).isEmpty && selectedDate != nil { // Show if loading AND no events for selected day
+                            ProgressView("Loading events...")
+                                .padding()
+                        }
+                        
+                        //else if let errorMessage = eventRepository.lastSyncErrorMessage, events(on: selectedDate ?? Date()).isEmpty && selectedDate != nil {
+                        //    Text("Error: \(errorMessage)")
+                        //        .foregroundColor(.red)
+                        //        .padding()
+                       // }
                         eventsSection
                     }
                     .padding(.bottom)
                     .background(Color(.systemBackground))
                 }
+                // 3. Add .refreshable for pull-to-refresh
+                .refreshable {
+                    print("[CalendarView] Refresh action triggered.")
+                    await eventRepository.syncAllEvents(forceFullSync: true)
+                }
             }
             .navigationTitle("Events Calendar")
             .navigationBarTitleDisplayMode(.inline)
+        }
+        
+        // 4. Add .task modifier for initial data load and sync
+        .task {
+            if eventRepository.events.isEmpty {
+                print("[CalendarView] Initial appearance: Loading events from Core Data then syncing.")
+                await eventRepository.loadEventsFromCoreData()
+                await eventRepository.syncAllEvents()
+            } else {
+                print("[CalendarView] Appeared with existing events, triggering background sync.")
+                await eventRepository.syncAllEvents(forceFullSync: false)
+            }
         }
     }
 
@@ -51,11 +76,6 @@ struct CalendarView: View {
 
     private var calendarHeader: some View {
         VStack(spacing: 8) {
-            //Text("Events Calendar")
-             //   .font(.title2)
-             //   .foregroundColor(.primary)
-             //   .padding(.top, 8)
-
             Text("Click on a specific day to see the NEMA event details")
                 .font(.subheadline)
                 .foregroundColor(.gray)
@@ -123,7 +143,7 @@ struct CalendarView: View {
                 DayCell(
                     date:        date,
                     isInMonth:   calendar.component(.month, from: date) == displayedMonth,
-                    hasEvent:    !events(on: date).isEmpty,
+                    hasEvent:    !events(on: date).isEmpty, // This now uses eventRepository.events
                     isSelected:  selectedDate.map { calendar.isDate(date, inSameDayAs: $0) } ?? false
                 )
                 .onTapGesture { selectedDate = date }
@@ -135,7 +155,7 @@ struct CalendarView: View {
     private var eventsSection: some View {
         Group {
             if let sel = selectedDate {
-                let list = events(on: sel)
+                let list = events(on: sel) // This now uses eventRepository.events
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Events on \(sel.formatted(date: .long, time: .omitted))")
                         .font(.headline)
@@ -147,7 +167,7 @@ struct CalendarView: View {
                             .font(.subheadline)
                             .foregroundColor(.gray)
                             .padding()
-                            .background(Color(.systemBackground))
+                            .background(Color(.secondarySystemBackground)) // Changed from Color(.systemBackground) for consistency if desired
                             .cornerRadius(12)
                             .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
                     } else {
@@ -162,7 +182,11 @@ struct CalendarView: View {
                 }
                 .padding(.horizontal)
             } else {
-                EmptyView()
+                // Optionally, show a message to select a date
+                Text("Select a day to see events.")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .padding()
             }
         }
     }
@@ -191,8 +215,9 @@ struct CalendarView: View {
 
     // MARK: – Helpers
 
-    private func events(on date: Date) -> [Event] {
-        loader.events.filter {
+    private func events(on date: Date?) -> [Event] {
+        guard let date = date else { return [] }
+        return eventRepository.events.filter { // Changed from loader.events
             $0.date.map { calendar.isDate($0, inSameDayAs: date) } ?? false
         }
     }

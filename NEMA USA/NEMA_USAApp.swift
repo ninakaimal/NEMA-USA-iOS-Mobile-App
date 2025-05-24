@@ -3,7 +3,7 @@
 //  NEMA USA
 //  Created by Sajith on 4/1/25.
 //
-
+import Kingfisher
 import SwiftUI
 
 @main
@@ -16,8 +16,31 @@ struct NEMA_USAApp: App {
 
     init() {
         configureNavigationBarAppearance()
+        configureKingfisherForTest()
+    }
+    
+    func configureKingfisherForTest() {
+        // You no longer need to create an instance of InsecureTrustDelegate for this.
+        // let sessionDelegate = InsecureTrustDelegate()
+        
+        // You also don't need to create a separate URLSessionConfiguration for this specific purpose,
+        // as Kingfisher's ImageDownloader will manage its own.
+        // let configuration = URLSessionConfiguration.default
+
+        // 1. Create your ImageDownloader instance.
+        let downloader = ImageDownloader(name: "customInsecureDownloader")
+
+        // 2. Configure the trustedHosts property. ✅
+        downloader.trustedHosts = ["test.nemausa.org"]
+
+        // 3. Set this downloader as the default for Kingfisher.
+        KingfisherManager.shared.downloader = downloader
+        
+        print("⚠️ Kingfisher configured with 'test.nemausa.org' in trustedHosts (DEVELOPMENT ONLY).")
     }
 
+
+    
     var body: some Scene {
         WindowGroup {
             ContentView()

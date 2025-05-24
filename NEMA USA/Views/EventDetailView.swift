@@ -7,6 +7,182 @@
 
 import SwiftUI
 import UIKit
+import Kingfisher
+
+// MARK: - Subviews (File Private for Encapsulation)
+
+fileprivate struct EventTitleCategoryView: View {
+    let title: String
+    let categoryName: String?
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(title)
+                .font(.title2).bold()
+                .foregroundColor(.primary)
+
+            Text(categoryName ?? "Uncategorized")
+                .font(.subheadline).italic()
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+fileprivate struct EventImageView: View {
+    let imageUrlString: String?
+    let placeholderImageName = "DefaultEventImage"
+
+    var body: some View {
+        if let imageUrlString = imageUrlString, let imageURL = URL(string: imageUrlString) {
+            KFImage(imageURL)
+                .placeholder {
+                    Image(placeholderImageName)
+                        .resizable()
+                        .scaledToFit() // Changed from scaledToFill in placeholder to match original fallback
+                        .frame(height: 200)
+                        .background(Color.gray.opacity(0.1))
+                        .clipped()
+                        .cornerRadius(12)
+                }
+                .fade(duration: 0.25)
+                .resizable()
+                .scaledToFill()
+                .frame(height: 200)
+                .clipped()
+                .cornerRadius(12)
+        } else {
+            Image(placeholderImageName)
+                .resizable()
+                .scaledToFit() // Consistent with above placeholder, might want to be scaledToFill if design dictates
+                .frame(height: 200)
+                .background(Color.gray.opacity(0.1))
+                .clipped()
+                .cornerRadius(12)
+        }
+    }
+}
+
+fileprivate struct EventDetailsCardView: View {
+    let event: Event // Contains date, location
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .foregroundColor(.orange)
+                Text("Date & Time")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            if let date = event.date { // Check if event.date has a value
+                 Text([
+                     date.formatted(.dateTime.month().day().year()),
+                     date.formatted(.dateTime.hour().minute().locale(Locale.current))
+                   ]
+                   .compactMap { $0 } // Remove any nil components (if date formatting itself could return nil)
+                   .joined(separator: " • ")
+                 )
+                 .font(.subheadline)
+                 .foregroundColor(.primary)
+             } else {
+                 Text("To be Announced")
+                     .font(.subheadline)
+                     .foregroundColor(.primary)
+             }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .foregroundColor(.orange)
+                Text("Location")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            Text(event.location ?? "To be Announced")
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: {
+                // Assuming MapAppLauncher is globally accessible or defined elsewhere
+                MapAppLauncher.presentMapOptions(for: event.location ?? "To be Announced")
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "location.fill")
+                    Text("View on Map")
+                }
+            }
+            .font(.subheadline.bold())
+            .foregroundColor(.orange)
+            .buttonStyle(PlainButtonStyle())
+            .tint(Color.orange)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+    }
+}
+
+fileprivate struct EventAboutCardView: View {
+    let descriptionText: String // Changed name from 'description' to avoid conflict with View.description
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("About This Event")
+                .font(.headline)
+                .foregroundColor(.primary)
+            Text(descriptionText)
+                .font(.body)
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+    }
+}
+
+fileprivate struct EventActionButtonsView: View {
+    let event: Event // Needed for isRegON, eventLink and for NavigationLink destination
+
+    var body: some View {
+        Group { // Use Group if the outer padding/frame is handled by the parent VStack
+            if event.isRegON ?? false {
+                NavigationLink(destination: EventRegistrationView(event: event)) {
+                    Text("Purchase Tickets")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+            } else {
+                Button(action: {
+                    let linkString = (event.eventLink?.isEmpty == false)
+                        ? event.eventLink!
+                        : "https://www.nemausa.org/events"
+                    if let url = URL(string: linkString) {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    Text("More Information")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+            }
+        }
+        .padding(.top, 16) // Original padding applied here
+    }
+}
 
 struct EventDetailView: View {
     let event: Event
@@ -41,139 +217,23 @@ struct EventDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
 
-                    // MARK: – Title & Category
-                    Text(event.title)
-                        .font(.title2).bold()
-                        .foregroundColor(.primary)
+                    EventTitleCategoryView(title: event.title, categoryName: event.categoryName)
 
-                    Text(event.category)
-                        .font(.subheadline).italic()
-                        .foregroundColor(.secondary)
+                    EventImageView(imageUrlString: event.imageUrl)
 
-                    // MARK: – Event Image
-                    let asset = event.imageUrl.replacingOccurrences(of: ".png", with: "")
-                    if UIImage(named: asset) != nil {
-                        Image(asset)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: 200)
-                            .clipped()
-                            .cornerRadius(12)
-                    } else {
-                        Color.gray.opacity(0.3)
-                            .frame(height: 200)
-                            .cornerRadius(12)
-                    }
+                    EventDetailsCardView(event: event)
 
-                    // MARK: – Details Card
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar")
-                                .foregroundColor(.orange)
-                            Text("Date & Time")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                        }
-                        Text(
-                            event.isTBD
-                                ? "To be announced"
-                                : [
-                                    event.date?.formatted(.dateTime.month().day().year()),
-                                    event.date?.formatted(.dateTime.hour().minute().locale(Locale.current))
-                                  ]
-                                  .compactMap { $0 }
-                                  .joined(separator: " • ")
-                        )
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
+                    EventAboutCardView(descriptionText: event.description ?? "")
 
-                        Divider()
-
-                        HStack(spacing: 8) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .foregroundColor(.orange)
-                            Text("Location")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                        }
-                        Text(event.location)
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Button(action: {
-                            MapAppLauncher.presentMapOptions(for: event.location)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "location.fill")
-                                Text("View on Map")
-                            }
-                        }
-                        .font(.subheadline.bold())
-                        .foregroundColor(.orange)
-                        .buttonStyle(PlainButtonStyle())
-                        .tint(Color.orange)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
-
-                    // MARK: – About Card
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("About This Event")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        Text(event.description)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
-
-                    // MARK: – More Info or Register Button
-                    if event.isRegON {
-                        NavigationLink(destination: EventRegistrationView(event: event)) {
-                            Text("Purchase Tickets")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.orange)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .padding(.top, 16)
-                    } else {
-                        Button(action: {
-                            // use provided link if non-empty, else default
-                            let linkString = (event.eventLink?.isEmpty == false)
-                                ? event.eventLink!
-                                : "https://www.nemausa.org/events"
-                            if let url = URL(string: linkString) {
-                                UIApplication.shared.open(url)
-                            }
-                        }) {
-                            Text("More Information")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.orange)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .padding(.top, 16)
-                    }
+                    EventActionButtonsView(event: event)
                 }
                 .padding()
-                .background(Color(.systemBackground))
+                .background(Color(.systemBackground)) // Original background
             }
         }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
-        .accentColor(.white)  // ensure back‐button & nav‐tint stay white
+        .accentColor(.white)
     }
 }
+

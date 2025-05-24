@@ -4,19 +4,19 @@
 //
 //  Created by Sajith on 5/5/25.
 //  Updated with correct PayPal route integration
-//
+// //  Updated by Sajith on 5/22/25 to add panthiId
 
 import Foundation
 
-struct PaymentConfirmationResponse: Codable {
+struct PaymentConfirmationResponse: Codable { /* ... as before ... */
     let status: String
-    let payment_id: String?
-    let transaction_id: String?
+    let payment_id: String? // PayPal's paymentId
+    let transaction_id: String? // PayPal's saleId or transactionId
     let membership_expiry: String?
     let ticket_pdf_url: String?
 }
 
-enum PaymentError: Error {
+enum PaymentError: Error { /* ... as before ... */
     case serverError(String)
     case invalidResponse
     case parseError(String)
@@ -27,14 +27,17 @@ final class PaymentManager: NSObject {
     private override init() {}
     
     private var createOrderCallback: ((Result<URL, PaymentError>) -> Void)?
-    private var paymentId: String?
+    private var payPalPaymentIdForCapture: String?
+    private var appSpecificTicketPurchaseId: Int? // Your DB's ticket_purchase.id if returned by createOrder
+
     
     private let baseURL = URL(string: "https://test.nemausa.org")!
     
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
-        cfg.httpCookieAcceptPolicy = .always
+        cfg.httpCookieAcceptPolicy = .always // Needed if /v1/pay_with_paypal_mobile is under 'web' middleware
         cfg.httpCookieStorage = HTTPCookieStorage.shared
+        // Ensure InsecureTrustDelegate is correctly defined as you have it
         return URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
     }()
     
@@ -86,6 +89,7 @@ final class PaymentManager: NSObject {
         packageId: Int? = nil,
         packageYears: Int? = nil,
         userId: Int? = nil,
+        panthiId: Int? = nil,
         completion: @escaping (Result<URL, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
@@ -122,7 +126,7 @@ final class PaymentManager: NSObject {
             var payload: [String: Any] = [
                 "amount": amount,
                 "item": "\(eventTitle) Purchase",
-                "description": eventTitle,
+                "description": "\(eventTitle) - \(name ?? "")",
                 "returnUrl": "https://test.nemausa.org/payment_status",
                 "type": paymentType,
                 "name": name ?? "",
@@ -200,7 +204,7 @@ final class PaymentManager: NSObject {
                        let paymentId = json["payment_id"] as? String,
                        let approvalURL = URL(string: approvalURLString) {
 
-                        self.paymentId = paymentId
+                        self.payPalPaymentIdForCapture = paymentId
 
                         if let ticketPurchaseId = json["ticketPurchaseId"] as? Int {
                             UserDefaults.standard.set(ticketPurchaseId, forKey: "ticketPurchaseId")
@@ -226,6 +230,7 @@ final class PaymentManager: NSObject {
     // MARK: — 2) Capture the order (Updated with correct endpoint and method)
         func captureOrder(
             payerId: String,
+            paymentId: String,
             memberName: String = "",
             email: String = "",
             phone: String = "",
@@ -233,15 +238,16 @@ final class PaymentManager: NSObject {
             type: String?,
             id: Int?,
             eventId: Int?,
+            panthiId: Int? = nil,
             completion: @escaping (Result<PaymentConfirmationResponse, PaymentError>) -> Void
         ) {
-            guard let storedPaymentId = paymentId else {
+            guard let paymentId = payPalPaymentIdForCapture else {
                 completion(.failure(.serverError("No paymentId found")))
                 return
             }
             
             var queryItems: [URLQueryItem] = [
-                URLQueryItem(name: "paymentId", value: storedPaymentId),
+                URLQueryItem(name: "paymentId", value: paymentId),
                 URLQueryItem(name: "PayerID", value: payerId),
                 URLQueryItem(name: "name", value: memberName),
                 URLQueryItem(name: "email", value: email),
@@ -307,7 +313,7 @@ final class PaymentManager: NSObject {
                     let decoder = JSONDecoder()
                     let response = try decoder.decode(PaymentConfirmationResponse.self, from: data)
                     DispatchQueue.main.async {
-                        self.paymentId = nil // Clear paymentId on success
+                        self.payPalPaymentIdForCapture = nil // Clear paymentId on success
                         completion(.success(response))
                     }
                 } catch {

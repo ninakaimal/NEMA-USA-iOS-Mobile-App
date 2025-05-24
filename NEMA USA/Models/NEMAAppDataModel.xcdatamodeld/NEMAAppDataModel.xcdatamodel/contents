@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="23H626" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <entity name="CDEvent" representedClassName="CDEvent" syncable="YES" codeGenerationType="class">
+        <attribute name="categoryName" optional="YES" attributeType="String"/>
+        <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="eventCatId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="eventDescription" optional="YES" attributeType="String"/>
+        <attribute name="eventLink" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="String"/>
+        <attribute name="imageUrl" optional="YES" attributeType="String"/>
+        <attribute name="isRegON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="title" attributeType="String"/>
+        <attribute name="usesPanthi" attributeType="Boolean" usesScalarValueType="YES"/>
+        <relationship name="panthis" toMany="YES" deletionRule="Cascade" destinationEntity="CDPanthi" inverseName="event" inverseEntity="CDPanthi"/>
+        <relationship name="ticketTypes" toMany="YES" deletionRule="Cascade" destinationEntity="CDEventTicketType" inverseName="event" inverseEntity="CDEventTicketType"/>
+    </entity>
+    <entity name="CDEventTicketType" representedClassName="CDEventTicketType" syncable="YES" codeGenerationType="class">
+        <attribute name="currencyCode" attributeType="String"/>
+        <attribute name="earlyBirdEndDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="earlyBirdMemberPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="earlyBirdPublicPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isTicketTypeMemberExclusive" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="memberPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="publicPrice" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="typeName" attributeType="String"/>
+        <relationship name="event" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="ticketTypes" inverseEntity="CDEvent"/>
+    </entity>
+    <entity name="CDPanthi" representedClassName="CDPanthi" syncable="YES" codeGenerationType="class">
+        <attribute name="availableSlots" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="panthiDescription" optional="YES" attributeType="String"/>
+        <attribute name="totalSlots" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="event" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="panthis" inverseEntity="CDEvent"/>
+    </entity>
+</model>

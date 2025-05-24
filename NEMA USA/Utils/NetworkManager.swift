@@ -45,8 +45,8 @@ private struct RefreshResponse: Decodable {
 }
 
 /// A delegate to unconditionally trust the test.nemausa.org cert
-class InsecureTrustDelegate: NSObject, URLSessionDelegate {
-    func urlSession(_ session: URLSession,
+public class InsecureTrustDelegate: NSObject, URLSessionDelegate {
+    public func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
     {
@@ -139,8 +139,48 @@ final class NetworkManager: NSObject {
                           delegateQueue: nil)
     }()
     
+    // Inside your NetworkManager class
+
+    private lazy var iso8601JSONDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        let formatter = ISO8601DateFormatter()
+
+        // These options are crucial for parsing "YYYY-MM-DDTHH:MM:SSZHH:MM" (e.g., "2023-08-22T22:17:12-04:00")
+        formatter.formatOptions = [
+            .withInternetDateTime,          // General YYYY-MM-DDTHH:MM:SS
+            .withDashSeparatorInDate,       // Ensures YYYY-MM-DD
+            .withColonSeparatorInTime,      // Ensures HH:MM:SS
+            .withColonSeparatorInTimeZone   // Crucial for ZHH:MM (like -04:00)
+        ]
+        // If your dates *never* have fractional seconds, DO NOT include .withFractionalSeconds here,
+        // as it can sometimes make the parser stricter if they are absent.
+        // If some dates have them and some don't, this single formatter might struggle,
+        // and a more complex custom strategy might be needed (trying multiple formatters).
+
+        decoder.dateDecodingStrategy = .custom { decoder throws -> Date in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+
+            if let date = formatter.date(from: dateString) {
+                return date
+            } else {
+                // Log the problematic string for debugging if primary formatter fails
+                print("🚨 Custom Date Decoding Failed: String '\(dateString)' could not be parsed by the primary ISO8601 formatter.")
+                throw DecodingError.dataCorruptedError(in: container,
+                                                       debugDescription: "Date string '\(dateString)' does not match expected ISO 8601 format.")
+            }
+        }
+
+        // If your JSON keys are snake_case (e.g., "last_updated_at") and your Swift
+        // struct properties are camelCase (e.g., "lastUpdatedAt"), add this:
+        // decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        return decoder
+    }()
+    
     /// Your front-end root
     private let baseURL = URL(string: "https://test.nemausa.org")!
+    
     
     // MARK: – Helpers
     
@@ -821,6 +861,211 @@ final class NetworkManager: NSObject {
         }
     }
     
+    private var eventsApiBaseURL: URL { // Helper to construct the correct base for these new v1 APIs
+        // Assuming your Dingo API routes are prefixed with /api
+        // If your baseURL is "https://test.nemausa.org", and Dingo routes are under "/api",
+        // then this should correctly point to "https://test.nemausa.org/api/"
+        // The Dingo router in your api.php seems to handle the /v1 prefix automatically based on versioning.
+        return baseURL.appendingPathComponent("v1/mobile/") // Path to your new mobile API folder/routes
+    }
+    // Re-use or define date formatter for 'since' parameter
+    private static let iso8601DateTimeFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds, .withColonSeparatorInTimeZone]
+        return formatter
+    }()
+
+    // 1. Fetch Events
+    func fetchEvents(since: Date?) async throws -> (events: [Event], deletedEventIds: [String]) {
+        var urlComponents = URLComponents(url: eventsApiBaseURL.appendingPathComponent("events"), resolvingAgainstBaseURL: false)!
+        var queryItems: [URLQueryItem] = []
+
+        if let sinceDate = since {
+            queryItems.append(URLQueryItem(name: "since", value: NetworkManager.iso8601DateTimeFormatter.string(from: sinceDate)))
+        }
+        // Add 'deleted_since' parameter handling here if your backend supports it for deleted IDs
+
+        if !queryItems.isEmpty {
+            urlComponents.queryItems = queryItems
+        }
+
+        guard let url = urlComponents.url else {
+            print("❌ [NetworkManager] fetchEvents: Bad URL components.")
+            throw NetworkError.serverError("Bad URL for fetching events.") // Or a more specific error
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+
+        // Add JWT token if your event listing API endpoint requires authentication
+        // if let token = DatabaseManager.shared.jwtApiToken {
+        //     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // }
+
+        print("🚀 [NetworkManager] Fetching events from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(for: request) // Use your existing 'session'
+        
+        // DEBUG: Print raw JSON string for /events call
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("🎁 RAW JSON for /events (first ~2000 chars): \(String(jsonString.prefix(2000)))")
+            do {
+                let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]]
+                if let firstEventJSON = jsonArray?.first { // Log the first event object
+                    print("First Event Object from /events JSON: \(firstEventJSON)")
+                }
+            } catch { print("Could not parse /events JSON for detailed first object print.") }
+        }
+        // END DEBUG
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [NetworkManager] fetchEvents: Invalid response, not HTTP.")
+            throw NetworkError.invalidResponse
+        }
+
+        print("🔄 [NetworkManager] fetchEvents: HTTP Status \(httpResponse.statusCode)")
+        // if let responseBody = String(data: data, encoding: .utf8) {
+        //     print("📦 [NetworkManager] fetchEvents: Response Body: \(responseBody)")
+        // }
+
+        if !(200...299).contains(httpResponse.statusCode) {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+            print("❌ [NetworkManager] fetchEvents: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to fetch events. Status: \(httpResponse.statusCode). \(errorBody)")
+        }
+        
+        do {
+            // Assuming API returns an array of Event objects directly
+            // Use your configured decoder
+            let fetchedEvents = try self.iso8601JSONDecoder.decode([Event].self, from: data)
+            return (fetchedEvents, [])
+        } catch {
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .typeMismatch(let type, let context):
+                    print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .keyNotFound(let key, let context):
+                    print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
+                case .dataCorrupted(let context):
+                    print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
+                @unknown default:
+                    print("Unknown decoding error.")
+                }
+            }
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    // 2. Fetch Ticket Types for a specific event
+    func fetchTicketTypes(forEventId eventId: String) async throws -> [EventTicketType] {
+        // Ensure eventId is properly URL encoded if it could contain special characters, though IDs usually don't.
+        let url = eventsApiBaseURL.appendingPathComponent("events/\(eventId)/tickettypes")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        // Add JWT token if required
+
+        print("🚀 [NetworkManager] Fetching ticket types for event \(eventId) from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(for: request)
+        
+        // DEBUG: Print raw JSON string for /events call
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("🎁 RAW JSON for /events (first ~1000-2000 chars): \(String(jsonString.prefix(2000)))") // Print a decent chunk
+            // You can also try to print the first few parsed objects if the string is too long
+            do {
+                let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]]
+                if let firstFewEvents = jsonArray?.prefix(3) { // Log first 3 events
+                    print("First few event objects from /events JSON: \(firstFewEvents)")
+                }
+            } catch { print("Could not parse /events JSON for detailed object print.") }
+        }
+        // END DEBUG
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [NetworkManager] fetchTicketTypes: Invalid response, not HTTP.")
+            throw NetworkError.invalidResponse
+        }
+        
+        print("🔄 [NetworkManager] fetchTicketTypes: HTTP Status \(httpResponse.statusCode)")
+
+        if !(200...299).contains(httpResponse.statusCode) {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+            print("❌ [NetworkManager] fetchTicketTypes: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to fetch ticket types. Status: \(httpResponse.statusCode). \(errorBody)")
+        }
+
+        do {
+            // Use your configured decoder
+                return try self.iso8601JSONDecoder.decode([EventTicketType].self, from: data)
+            
+        } catch {
+            print("❌ [NetworkManager] fetchTicketTypes: Decoding failed: \(error)")
+            // Log more details for decoding errors
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .typeMismatch(let type, let context):
+                    print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .keyNotFound(let key, let context):
+                    print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
+                case .dataCorrupted(let context):
+                    print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
+                @unknown default:
+                    print("Unknown decoding error.")
+                }
+            }
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    // 3. Fetch Panthis for a specific event
+    func fetchPanthis(forEventId eventId: String) async throws -> [Panthi] {
+        let url = eventsApiBaseURL.appendingPathComponent("events/\(eventId)/panthis")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        // Add JWT token if required
+
+        print("🚀 [NetworkManager] Fetching panthis for event \(eventId) from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(for: request)
+        
+        // Optional: Add similar JSON logging here for Panthis if you encounter issues with it later
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("🎁 RAW JSON for /panthis (Event ID: \(eventId)): \(jsonString)")
+         }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [NetworkManager] fetchPanthis: Invalid response, not HTTP.")
+            throw NetworkError.invalidResponse
+        }
+            
+        print("🔄 [NetworkManager] fetchPanthis: HTTP Status \(httpResponse.statusCode)")
+
+        if !(200...299).contains(httpResponse.statusCode) {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+            print("❌ [NetworkManager] fetchPanthis: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to fetch panthis. Status: \(httpResponse.statusCode). \(errorBody)")
+        }
+        
+        do {
+            return try self.iso8601JSONDecoder.decode([Panthi].self, from: data)
+        } catch {
+            print("❌ [NetworkManager] fetchPanthis: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    // Optional: Fetch Event Categories
+    // func fetchCategories(since: Date?) async throws -> [EventCategory] { ... }
+
     
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(
@@ -1056,4 +1301,3 @@ extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
         }
     }
 }
-
