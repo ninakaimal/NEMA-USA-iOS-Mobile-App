@@ -13,8 +13,10 @@ struct PayPalView: UIViewRepresentable {
     @Binding var showPaymentError: Bool
     @Binding var paymentErrorMessage: String
     @Binding var showPurchaseSuccess: Bool
+    @Binding var paymentConfirmationData: PaymentConfirmationResponse? // supports membership date updates upon successful payment
     let comments: String
     let successMessage: String
+
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -70,7 +72,7 @@ struct PayPalView: UIViewRepresentable {
                 confirmPaymentOnBackend(
                     paymentId: paymentId,
                     payerId: payerId,
-                    callbackURL: url, // ✅ Critical fix: Pass actual callback URL
+                    callbackURL: url, // Pass actual callback URL
                     comments: parent.comments
                 )
                 
@@ -119,83 +121,158 @@ struct PayPalView: UIViewRepresentable {
             queryItemsDict["email"] = UserDefaults.standard.string(forKey: "emailAddress") ?? ""
             queryItemsDict["phone"] = UserDefaults.standard.string(forKey: "phoneNumber") ?? ""
             queryItemsDict["comments"] = comments
-            queryItemsDict["item"] = comments
-
-            // Build final URL
-              var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
-              components.queryItems = queryItemsDict.map { URLQueryItem(name: $0.key, value: $0.value) }
-
-              guard let url = components.url else {
-                  parent.paymentErrorMessage = "Invalid URL for backend capture call"
-                  parent.showPaymentError = true
-                  return
-              }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.addValue("application/json", forHTTPHeaderField: "Accept")
-            
-            print("🔍 Initiating backend confirmation at URL:", url.absoluteString)
-
-                urlSession.dataTask(with: request) { data, response, error in
-                    guard error == nil, let httpResponse = response as? HTTPURLResponse else {
-                        DispatchQueue.main.async {
-                        print("❌ Backend call failed: \(error!.localizedDescription)")
-                            self.parent.paymentErrorMessage = error?.localizedDescription ?? "Unknown error"
-                            self.parent.showPaymentError = true
-                        }
-                        return
-                    }
-
-                print("🔍 Backend response status code:", httpResponse.statusCode)
-                
-                    if (300...399).contains(httpResponse.statusCode),
-                       let redirectLocation = httpResponse.allHeaderFields["Location"] as? String,
-                       let redirectURL = URL(string: redirectLocation) {
-
-                    // ✅ Follow redirect explicitly
-                        print("🔍 Following redirect to:", redirectURL.absoluteString)
-                        self.followRedirect(redirectURL)
-                    
-                    } else if (200...299).contains(httpResponse.statusCode) {
-                        DispatchQueue.main.async {
-                            print("✅ Payment captured successfully (HTTP 200)")
-                            self.parent.showPurchaseSuccess = true
-                        }
-                    } else {
-                        DispatchQueue.main.async {
-                            print("❌ Backend returned HTTP \(httpResponse.statusCode)")
-                            self.parent.paymentErrorMessage = "HTTP Error \(httpResponse.statusCode)"
-                            self.parent.showPaymentError = true
-                        }
-                    }
-                }.resume()
+            if queryItemsDict["item"] == nil || queryItemsDict["item"]!.isEmpty {
+                 queryItemsDict["item"] = comments
             }
 
+            // Build final URL for v1/payment_status_mobile
+            var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
+            // Important: Ensure queryItems from callbackURL are preserved and PayerID/paymentId are added/overridden
+            components.queryItems = queryItemsDict.map { URLQueryItem(name: $0.key, value: $0.value) }
+
+            guard let url = components.url else {
+                parent.paymentErrorMessage = "Invalid URL for backend capture call"
+                parent.showPaymentError = true
+                return
+            }
+
+
+            var request = URLRequest(url: url)
+             request.httpMethod = "GET" // As per your backend route for payment_status_mobile
+             request.addValue("application/json", forHTTPHeaderField: "Accept")
+             
+             // Add JWT token if your v1/payment_status_mobile endpoint is protected
+             // and needs to identify the user for certain operations (though often it's public
+             // and relies on signed parameters or session from PayPal callback).
+             // if let jwtToken = DatabaseManager.shared.jwtApiToken {
+             //     request.setValue("Bearer \(jwtToken)", forHTTPHeaderField: "Authorization")
+             // }
+             
+             print("🔍 [PayPalView.confirmPayment] Initiating backend confirmation. URL: \(url.absoluteString)")
+             // Log the full queryItemsDict being sent
+             // print("🔍 [PayPalView.confirmPayment] Query Parameters Sent: \(queryItemsDict)")
+
+
+             urlSession.dataTask(with: request) { data, response, error in
+                 guard error == nil, let httpResponse = response as? HTTPURLResponse, let responseData = data else {
+                     DispatchQueue.main.async {
+                         let nsError = error as NSError?
+                         print("❌ [PayPalView.confirmPayment] Backend call network/transport error: \(error?.localizedDescription ?? "Unknown error"). Code: \(nsError?.code ?? 0)")
+                         self.parent.paymentErrorMessage = error?.localizedDescription ?? "Network error during payment confirmation."
+                         self.parent.showPaymentError = true
+                     }
+                     return
+                 }
+
+                 // Log raw response for debugging
+                 // if let responseString = String(data: responseData, encoding: .utf8) {
+                 //    print("📦 [PayPalView.confirmPayment] Backend Raw Response (\(httpResponse.statusCode)): \(responseString)")
+                 // }
+                 
+                 if (200...299).contains(httpResponse.statusCode) {
+                     do {
+                         // Use a JSONDecoder. If you have a global one with specific strategies (e.g., snake_case), use that.
+                         let decoder = JSONDecoder()
+                         // Ensure your PaymentConfirmationResponse struct matches the JSON keys from the backend
+                         // For example, if backend sends "online_payment_id", struct should have "online_payment_id" or use keyDecodingStrategy
+                         let confirmationResponse = try decoder.decode(PaymentConfirmationResponse.self, from: responseData)
+                         
+                         DispatchQueue.main.async {
+                             print("✅ [PayPalView.confirmPayment] Payment captured successfully (HTTP \(httpResponse.statusCode)). Parsed: \(confirmationResponse)")
+                             self.parent.paymentConfirmationData = confirmationResponse // Update the binding
+                             self.parent.showPurchaseSuccess = true
+                         }
+                     } catch {
+                         DispatchQueue.main.async {
+                             print("❌ [PayPalView.confirmPayment] Failed to decode PaymentConfirmationResponse: \(error)")
+                              if let responseString = String(data: responseData, encoding: .utf8) {
+                                 print("📦 [PayPalView.confirmPayment] Failing JSON to decode: \(responseString)")
+                             }
+                             self.parent.paymentErrorMessage = "Payment confirmed, but response processing failed: \(error.localizedDescription)"
+                             self.parent.showPaymentError = true // Show error, but payment might be okay on backend.
+                         }
+                     }
+                 } else if (300...399).contains(httpResponse.statusCode),
+                           let redirectLocation = httpResponse.allHeaderFields["Location"] as? String,
+                           let redirectURL = URL(string: redirectLocation) {
+                     // This case might not be typical for a GET API endpoint like payment_status_mobile
+                     // unless it's designed to redirect under certain conditions.
+                     print("🔍 [PayPalView.confirmPayment] Backend responded with redirect (\(httpResponse.statusCode)) to: \(redirectURL.absoluteString)")
+                     self.followRedirect(redirectURL)
+                 
+                 } else {
+                     DispatchQueue.main.async {
+                         var errorMessage = "Payment confirmation failed with HTTP Error \(httpResponse.statusCode)."
+                         if let responseString = String(data: responseData, encoding: .utf8) {
+                             // Try to parse a generic error message from backend if available
+                             // This depends on your backend's error response structure
+                             // For example, if it returns { "error": "message" }
+                             // You could try:
+                             // if let jsonError = try? JSONDecoder().decode([String: String].self, from: responseData),
+                             //    let specificError = jsonError["error"] {
+                             //     errorMessage += " Server message: \(specificError)"
+                             // } else {
+                             //     errorMessage += " Response: \(responseString)"
+                             // }
+                              print("❌ [PayPalView.confirmPayment] Backend returned HTTP \(httpResponse.statusCode). Body: \(responseString)")
+                              errorMessage += " Please check details or contact support."
+                         }
+                         self.parent.paymentErrorMessage = errorMessage
+                         self.parent.showPaymentError = true
+                     }
+                 }
+             }.resume()
+         }
+
         private func followRedirect(_ url: URL) {
-            print("🔍 Initiating redirect request to:", url.absoluteString)
+            print("🔍 [PayPalView.followRedirect] Initiating redirect request to: \(url.absoluteString)")
             var redirectRequest = URLRequest(url: url)
-            redirectRequest.httpMethod = "GET"
+            redirectRequest.httpMethod = "GET" // Assuming redirect target is GET
+            redirectRequest.addValue("application/json", forHTTPHeaderField: "Accept")
+            // Add JWT token if redirect target requires authentication
 
             urlSession.dataTask(with: redirectRequest) { data, response, error in
-                guard error == nil, let httpResponse = response as? HTTPURLResponse else {
+                guard error == nil, let httpResponse = response as? HTTPURLResponse, let responseData = data else {
                     DispatchQueue.main.async {
-                        print("❌ Redirect request failed: \(error!.localizedDescription)")
-                        self.parent.paymentErrorMessage = error!.localizedDescription
+                        print("❌ [PayPalView.followRedirect] Redirect request failed: \(error?.localizedDescription ?? "Unknown error")")
+                        self.parent.paymentErrorMessage = error?.localizedDescription ?? "Error following payment redirect."
                         self.parent.showPaymentError = true
                     }
                     return
                 }
+                
+                // Log raw response for debugging
+                // if let responseString = String(data: responseData, encoding: .utf8) {
+                //    print("📦 [PayPalView.followRedirect] Backend Raw Response (\(httpResponse.statusCode)): \(responseString)")
+                // }
 
                 if (200...299).contains(httpResponse.statusCode) {
-                    DispatchQueue.main.async {
-                        print("✅ Redirect successfully followed and payment captured.")
-                        self.parent.showPurchaseSuccess = true
+                    do {
+                        let decoder = JSONDecoder()
+                        let confirmationResponse = try decoder.decode(PaymentConfirmationResponse.self, from: responseData)
+                        DispatchQueue.main.async {
+                            print("✅ [PayPalView.followRedirect] Redirect successfully followed. Parsed Response: \(confirmationResponse)")
+                            self.parent.paymentConfirmationData = confirmationResponse // Update the binding
+                            self.parent.showPurchaseSuccess = true
+                        }
+                    } catch {
+                         DispatchQueue.main.async {
+                            print("❌ [PayPalView.followRedirect] Failed to decode PaymentConfirmationResponse after redirect: \(error)")
+                            if let responseString = String(data: responseData, encoding: .utf8) {
+                                print("📦 [PayPalView.followRedirect] Failing JSON to decode: \(responseString)")
+                            }
+                            self.parent.paymentErrorMessage = "Payment redirect successful, but response processing failed: \(error.localizedDescription)"
+                            self.parent.showPaymentError = true
+                        }
                     }
                 } else {
                     DispatchQueue.main.async {
-                        print("❌ Redirect returned HTTP \(httpResponse.statusCode)")
-                        self.parent.paymentErrorMessage = "Redirect HTTP Error \(httpResponse.statusCode)"
+                        var errorMessage = "Payment redirect failed with HTTP Error \(httpResponse.statusCode)."
+                         if let responseString = String(data: responseData, encoding: .utf8) {
+                             print("❌ [PayPalView.followRedirect] Redirect returned HTTP \(httpResponse.statusCode). Body: \(responseString)")
+                             errorMessage += " Please contact support."
+                        }
+                        self.parent.paymentErrorMessage = errorMessage
                         self.parent.showPaymentError = true
                     }
                 }

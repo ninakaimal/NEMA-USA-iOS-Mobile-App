@@ -646,24 +646,38 @@ final class NetworkManager: NSObject {
     // 3) Create membership
     func createMembership(
         packageId: Int,
+        onlinePaymentId: Int?, // <<<< ADD this parameter
         completion: @escaping (Result<Membership, NetworkError>) -> Void
     ) {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
             return completion(.failure(.invalidResponse))
         }
-        let url = baseURL.appendingPathComponent("v1/mobile/membership")
+        let url = baseURL.appendingPathComponent("v1/mobile/membership") // POST to this for creation
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = ["package_id": packageId]
-        req.httpBody = try? JSONEncoder().encode(body)
+
+        var body: [String: Any] = ["package_id": packageId]
+        if let paymentId = onlinePaymentId {
+            body["online_payment_id"] = paymentId // Pass this to the backend
+        }
+
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        } catch {
+            DispatchQueue.main.async {
+                completion(.failure(.serverError("Failed to encode request body for create: \(error.localizedDescription)")))
+            }
+            return
+        }
+
         performRequest(req) { result in
             switch result {
             case .failure(let e): completion(.failure(e))
             case .success(let data):
                 do {
-                    let m = try JSONDecoder().decode(Membership.self, from: data)
+                    let m = try self.iso8601JSONDecoder.decode(Membership.self, from: data)
                     completion(.success(m))
                 } catch {
                     completion(.failure(.decodingError(error)))
@@ -675,6 +689,7 @@ final class NetworkManager: NSObject {
     // 4) Renew membership
     func renewMembership(
         packageId: Int,
+        onlinePaymentId: Int?, // Ensure this parameter is present
         completion: @escaping (Result<Membership, NetworkError>) -> Void
     ) {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
@@ -685,14 +700,31 @@ final class NetworkManager: NSObject {
         req.httpMethod = "POST"
         req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = ["package_id": packageId]
-        req.httpBody = try? JSONEncoder().encode(body)
+
+        var body: [String: Any] = ["package_id": packageId]
+        if let paymentId = onlinePaymentId {
+            body["online_payment_id"] = paymentId // Pass this to the backend
+        }
+
+        // Use JSONSerialization if your body is [String: Any]
+        // Ensure 'body' can be encoded by your 'performRequest' or encode here
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        } catch {
+            DispatchQueue.main.async {
+                completion(.failure(.serverError("Failed to encode request body: \(error.localizedDescription)")))
+            }
+            return
+        }
+
         performRequest(req) { result in
             switch result {
             case .failure(let e): completion(.failure(e))
             case .success(let data):
                 do {
-                    let m = try JSONDecoder().decode(Membership.self, from: data)
+                    // Assuming JSONDecoder is configured for snake_case if necessary,
+                    // and your Membership struct matches the backend response.
+                    let m = try self.iso8601JSONDecoder.decode(Membership.self, from: data)
                     completion(.success(m))
                 } catch {
                     completion(.failure(.decodingError(error)))

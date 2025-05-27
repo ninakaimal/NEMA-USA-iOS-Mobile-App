@@ -22,6 +22,8 @@ struct EventRegistrationView: View {
     // MARK: – Login / Member state
     @State private var showLoginSheet          = false
     @State private var pendingPurchase         = false
+    @State private var userInitiatedLogin = false
+    @State private var attemptedLoginForMemberPrice = false // state variable to track if user *chose* to login from this screen
     
     // User Info state variables (managed by the view for now)
     @State private var memberNameText   = ""
@@ -32,12 +34,14 @@ struct EventRegistrationView: View {
     @State private var acceptedTerms = false
     
     // MARK: – PayPal / Alerts
-    // MARK: – PayPal / Alerts
+    @State private var isProcessingPayment = false
     @State private var showPurchaseConfirmation = false
     @State private var showPurchaseSuccess      = false
     @State private var approvalURL: URL?        = nil
     @State private var showPaymentError    = false
     @State private var paymentErrorMessage = ""
+    
+    @State private var dummyPaymentConfirmationForPayPalView: PaymentConfirmationResponse? = nil
     
     init(event: Event) {
         self.event = event
@@ -63,13 +67,25 @@ struct EventRegistrationView: View {
             .navigationTitle("\(event.title) Tickets") // Set title here
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLoginSheet, onDismiss: {
-                loadMemberInfo() // Re-check user info after login attempt
-                if pendingPurchase {
-                    if DatabaseManager.shared.jwtApiToken != nil { // Check if login was successful
-                        validateAndShowPurchaseConfirmation()
-                    }
-                    pendingPurchase = false
+                loadMemberInfo()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    viewModel.objectWillChange.send()
                 }
+
+                // This block seems fine, assuming userInitiatedLogin is correctly declared as @State
+                if userInitiatedLogin {
+                    // viewModel.objectWillChange.send() was called above, UI should update.
+                    userInitiatedLogin = false
+                }
+
+                if pendingPurchase {
+                    if DatabaseManager.shared.jwtApiToken != nil {
+                        validateAndShowPurchaseConfirmation()
+                    } else {
+                        pendingPurchase = false
+                    }
+                }
+                attemptedLoginForMemberPrice = false
             }) {
                 LoginView() // Make sure LoginView updates DatabaseManager.shared states
             }
@@ -79,6 +95,7 @@ struct EventRegistrationView: View {
             ) {
                 Button("Cancel", role: .cancel) { }
                 Button("Confirm") {
+                    isProcessingPayment = true
                     initiateMobilePayment()
                 }
             } message: {
@@ -110,6 +127,7 @@ struct EventRegistrationView: View {
                     showPaymentError:   $showPaymentError,
                     paymentErrorMessage:$paymentErrorMessage,
                     showPurchaseSuccess:$showPurchaseSuccess,
+                    paymentConfirmationData: $dummyPaymentConfirmationForPayPalView,
                     comments:           "\(event.title) Tickets for \(memberNameText)", // More context
                     successMessage:     "Your tickets have been purchased successfully!"
                 )
@@ -174,6 +192,25 @@ struct EventRegistrationView: View {
                 TextField("Name", text: $memberNameText).textFieldStyle(.roundedBorder)
                 TextField("Email", text: $emailAddressText).keyboardType(.emailAddress).textFieldStyle(.roundedBorder)
                 TextField("Phone", text: $phoneText).keyboardType(.phonePad).textFieldStyle(.roundedBorder)
+              
+                // Add Login/Member Status Button
+                if DatabaseManager.shared.jwtApiToken == nil { // Only show if not logged in
+                    Button("Login for Member Pricing / Account") {
+                        userInitiatedLogin = true
+                        attemptedLoginForMemberPrice = true
+                        pendingPurchase = false
+                        showLoginSheet = true
+                    }
+                    .padding(.top, 8)
+                    Text("You can also proceed as a guest with non-member prices.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else if let user = DatabaseManager.shared.currentUser {
+                     Text(user.isMember ? "Member prices are automatically applied." : "Not a NEMA member. Public prices apply.")
+                        .font(.caption)
+                        .foregroundColor(user.isMember ? .green : .orange)
+                        .padding(.top, 5)
+                }
             }
         }
         .padding()
@@ -302,8 +339,20 @@ struct EventRegistrationView: View {
             eventUsesPanthi: event.usesPanthi ?? false,
             availablePanthisNonEmpty: !memberNameText.isEmpty && !emailAddressText.isEmpty && !phoneText.isEmpty && emailAddressText.isValidEmail
         )
-        return Button("Purchase") {
+        return Button(action: {
             validateAndShowPurchaseConfirmation()
+        }) {
+            // The content of the button changes based on 'isProcessingPayment'
+            if isProcessingPayment {
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white)) // Style for white spinner
+                        .padding(.trailing, 5) // Optional spacing
+                    Text("Processing...")
+                }
+            } else {
+                Text("Purchase")
+            }
         }
         .disabled(!canProceed)
         .padding()
@@ -333,26 +382,45 @@ struct EventRegistrationView: View {
               "Phone:", phoneText)
     }
     private func validateAndShowPurchaseConfirmation() {
-        guard DatabaseManager.shared.jwtApiToken != nil else {
-            paymentErrorMessage = "Please log in to purchase tickets."
-            showPaymentError = false
-            pendingPurchase = true
-            showLoginSheet = true
-            return
+        // Validate user-entered info first - this is for guest or logged-in user
+        guard !memberNameText.isEmpty else {
+            paymentErrorMessage = "Please provide your Full Name to proceed.";
+            showPaymentError = true; return
         }
-        
-        guard !memberNameText.isEmpty else { paymentErrorMessage = "Full Name is required."; showPaymentError = true; return }
-        guard !emailAddressText.isEmpty, emailAddressText.isValidEmail else { paymentErrorMessage = "Valid Email is required."; showPaymentError = true; return }
-        guard !phoneText.isEmpty else { paymentErrorMessage = "Phone number is required."; showPaymentError = true; return }
-        guard acceptedTerms else { paymentErrorMessage = "You must accept the terms & conditions."; showPaymentError = true; return }
-        guard viewModel.totalAmount > 0 else { paymentErrorMessage = "Please select at least one ticket."; showPaymentError = true; return }
-        
-        if event.usesPanthi ?? false && !viewModel.availablePanthis.isEmpty && viewModel.selectedPanthiId == nil {
-            paymentErrorMessage = "Please select a time slot/Panthi."
+        guard !emailAddressText.isEmpty, emailAddressText.isValidEmail else {
+            paymentErrorMessage = "A valid Email Address is required.";
+            showPaymentError = true; return
+        }
+        guard !phoneText.isEmpty else {
+            paymentErrorMessage = "Your Phone Number is required.";
             showPaymentError = true; return
         }
         
-        showPurchaseConfirmation = true
+        // Other existing validations
+        guard acceptedTerms else {
+            paymentErrorMessage = "You must accept the terms & conditions.";
+            showPaymentError = true; return
+        }
+        guard viewModel.totalAmount > 0 else {
+            paymentErrorMessage = "Please select at least one ticket.";
+            showPaymentError = true; return
+        }
+        if event.usesPanthi ?? false && !viewModel.availablePanthis.isEmpty && viewModel.selectedPanthiId == nil {
+            paymentErrorMessage = "Please select a time slot/Panthi for this event."
+            showPaymentError = true; return
+        }
+        
+        // If the user is NOT logged in (is a guest) AND they have filled in their details,
+        // we can proceed to show the purchase confirmation.
+        // If they ARE logged in, we also proceed.
+        // The `initiateMobilePayment()` function will handle sending data appropriately
+        // (including the JWT if logged in, or just guest details if not).
+        
+        // The behavior of forcing login when `pendingPurchase` is true after `LoginView` dismisses
+        // will still work if the user *chose* to login via the "Login for Member Pricing" button.
+        // This specific `validateAndShowPurchaseConfirmation` is for when the "Purchase" button is tapped directly.
+
+        showPurchaseConfirmation = true // Proceed to show purchase confirmation
     }
     
     private func initiateMobilePayment() {
@@ -362,9 +430,22 @@ struct EventRegistrationView: View {
         guard let eventIDInt = Int(event.id) else { // Convert String event.id to Int
             paymentErrorMessage = "Invalid Event ID."
             showPaymentError = true
+            isProcessingPayment = false
             return
         }
         
+        var lineItemsPayload: [[String: Any]] = []
+        for ticketType in viewModel.availableTicketTypes {
+            if let quantity = viewModel.ticketQuantities[ticketType.id], quantity > 0 {
+                lineItemsPayload.append([
+                    "ticket_type_id": ticketType.id,
+                    "quantity": quantity
+                ])
+            }
+        }
+        
+        print("✅ [EventRegView] Constructed lineItemsPayload: \(lineItemsPayload)")
+
         PaymentManager.shared.createOrder( // This is the call that needs to match the signature
             amount: String(format: "%.2f", viewModel.totalAmount),
             eventTitle: event.title,
@@ -377,9 +458,11 @@ struct EventRegistrationView: View {
             packageId: nil,             // Explicitly nil
             packageYears: nil,          // Explicitly nil
             userId: nil,                // Explicitly nil (unless you link ticket purchase to a logged-in user ID here)
-            panthiId: viewModel.selectedPanthiId, // <-- ENSURE THIS ARGUMENT IS PRESENT
+            panthiId: viewModel.selectedPanthiId,
+            lineItems: lineItemsPayload,
             completion: { result in // This is the completion handler
                 DispatchQueue.main.async {
+                    self.isProcessingPayment = false
                     switch result {
                     case .success(let url):
                         self.approvalURL = url

@@ -45,7 +45,7 @@ class EventRepository: ObservableObject {
                 let fetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
                 fetchRequest.predicate = NSPredicate(format: "id IN %@", existingEventIDs)
                 let existingCDEventsArray = try viewContext.fetch(fetchRequest)
-                var existingCDEventsDict = Dictionary(uniqueKeysWithValues: existingCDEventsArray.map { ($0.id!, $0) })
+                let existingCDEventsDict = Dictionary(uniqueKeysWithValues: existingCDEventsArray.map { ($0.id!, $0) })
 
                 for eventData in fetchedEventsData { // <<<<<<<< CORRECTLY USES fetchedEventsData
                     let cdEvent = existingCDEventsDict[eventData.id] ?? CDEvent(context: viewContext)

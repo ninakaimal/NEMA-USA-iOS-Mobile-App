@@ -8,10 +8,13 @@
 
 import Foundation
 
-struct PaymentConfirmationResponse: Codable { /* ... as before ... */
+struct PaymentConfirmationResponse: Codable {
     let status: String
     let payment_id: String? // PayPal's paymentId
     let transaction_id: String? // PayPal's saleId or transactionId
+    let online_payment_db_id: Int? // <<<< ADD: Your DB's OnlinePayment PK (e.g., 3490)
+    let package_id_for_renewal: Int? // <<<< ADD: The package_id for the renewal
+    let message: String?             // General message from backend
     let membership_expiry: String?
     let ticket_pdf_url: String?
 }
@@ -90,6 +93,7 @@ final class PaymentManager: NSObject {
         packageYears: Int? = nil,
         userId: Int? = nil,
         panthiId: Int? = nil,
+        lineItems: [[String: Any]]? = nil,
         completion: @escaping (Result<URL, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
@@ -105,6 +109,14 @@ final class PaymentManager: NSObject {
             req.httpMethod = "POST"
             req.addValue("application/json", forHTTPHeaderField: "Content-Type")
             req.addValue("application/json", forHTTPHeaderField: "Accept")
+            
+            // Add JWT token if available (for user identification on backend)
+            if let jwtToken = DatabaseManager.shared.jwtApiToken { // <<<< UNCOMMENT THIS BLOCK
+                req.addValue("Bearer \(jwtToken)", forHTTPHeaderField: "Authorization")
+                print("✅ [PaymentManager] JWT token added to createOrder request.")
+            } else {
+                print("ℹ️ [PaymentManager] No JWT token found, guest purchase assumed for createOrder.")
+            }
 
             if let cookie = HTTPCookieStorage.shared.cookies?.first(where: { $0.name == "XSRF-TOKEN" }),
                let token = cookie.value.removingPercentEncoding {
@@ -112,116 +124,111 @@ final class PaymentManager: NSObject {
             }
 
             // Explicit logic to determine the correct 'type'
-            var paymentType: String
-            if let explicitMembershipType = membershipType {
-                paymentType = explicitMembershipType  // either "membership" or "renew"
+            var paymentTypeDetermined: String
+            if let explicitMembershipType = membershipType, ["membership", "new_member", "renew"].contains(explicitMembershipType.lowercased()) {
+                paymentTypeDetermined = explicitMembershipType.lowercased()
             } else if eventID != nil {
-                paymentType = "ticket"
+                paymentTypeDetermined = "ticket"
             } else {
-                paymentType = "membership"  // fallback (though ideally never hits this)
+                // Fallback or error if type cannot be determined
+                print("⚠️ Could not determine payment type for createOrder. EventID is nil and no explicit membership type.")
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("Could not determine payment type.")))
+                }
+                return
             }
             
-            print("Payment type set to", paymentType)
+            print("[PaymentManager] createOrder: Payment type set to: \(paymentTypeDetermined)")
+
             
             var payload: [String: Any] = [
                 "amount": amount,
-                "item": "\(eventTitle) Purchase",
-                "description": "\(eventTitle) - \(name ?? "")",
-                "returnUrl": "https://test.nemausa.org/payment_status",
-                "type": paymentType,
+                "item": "\(eventTitle) Purchase", // General item name
+                "description": "\(eventTitle) - \(name ?? "Guest")", // More specific description
+                "returnUrl": "https://test.nemausa.org/payment_status", // This is PayPal's, backend handles mobile redirect
+                "type": paymentTypeDetermined,
                 "name": name ?? "",
                 "email": email ?? "",
                 "phone": phone ?? ""
             ]
 
-            // Include membership-specific details conditionally
-            if paymentType == "membership" || paymentType == "renew" {
-                guard let packageId = packageId, let packageYears = packageYears else {
-                    print("⚠️ Missing packageId or packageYears for membership")
+            // Add parameters based on payment type
+            switch paymentTypeDetermined {
+            case "ticket":
+                if let eventID = eventID {
+                    payload["event_id"] = eventID
+                }
+                if let panthiId = panthiId {
+                    payload["panthi_id"] = panthiId
+                }
+                // ** Add line_items if it's a ticket purchase and lineItems are provided **
+                if let lineItems = lineItems, !lineItems.isEmpty {
+                    payload["line_items"] = lineItems // This should be an array of dictionaries
+                    print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
+                } else {
+                    print("⚠️ [PaymentManager] line_items not provided or empty for ticket purchase type.")
+                }
+
+            case "membership", "new_member":
+                guard let packageId = packageId, let packageYears = packageYears, let userIdForNewMembership = userId else {
+                    print("⚠️ Missing packageId, packageYears, or userId for new membership")
                     DispatchQueue.main.async {
-                        completion(.failure(.serverError("Missing membership package details")))
+                        completion(.failure(.serverError("Missing new membership details (package, years, or user ID).")))
                     }
                     return
                 }
-
                 payload["pckg_id"] = packageId
                 payload["no"] = packageYears
+                payload["id"] = userIdForNewMembership // Backend expects 'id' for user_id
 
-                if let userId = userId {
-                    payload["id"] = userId
+            case "renew":
+                guard let packageId = packageId, let packageYears = packageYears, let userIdForRenewal = userId else {
+                    print("⚠️ Missing packageId, packageYears, or userId for membership renewal")
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError("Missing renewal details (package, years, or user ID).")))
+                    }
+                    return
                 }
+                payload["pckg_id"] = packageId
+                payload["no"] = packageYears
+                payload["id"] = userIdForRenewal // Backend expects 'id' for user_id (or membership_id depending on backend)
+                                                // Your web flow seems to use membership_id for 'id' in session for renew,
+                                                // but user_id for 'new_member'. Clarify if backend expects user_id or membership.id here.
+                                                // For now, assuming 'id' passed to createOrder is the user_id to align with 'new_member'.
+            default:
+                print("⚠️ Unknown payment type for payload modification: \(paymentTypeDetermined)")
             }
+            
+            print("[PaymentManager] createOrder: Sending payload to backend: \(payload)")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: .prettyPrinted) // .prettyPrinted for easier debugging
 
-            // Include event_id explicitly for tickets
-            if paymentType == "ticket", let eventID = eventID {
-                payload["event_id"] = eventID
-            }
-            print("Sending payload:", payload)
-            req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+            self.createOrderCallback = completion // Store the completion handler
 
             self.session.dataTask(with: req) { data, resp, err in
-                if let e = err {
-                    print("❌ Network error:", e.localizedDescription)
-                    DispatchQueue.main.async {
-                        completion(.failure(.serverError(e.localizedDescription)))
+                // ... (your existing network error handling, status code checking, and JSON parsing) ...
+                // Ensure you store appSpecificTicketPurchaseId if backend returns it
+                // Example from your existing code, ensure it's adapted:
+                if let json = try? JSONSerialization.jsonObject(with: data!) as? [String: Any] {
+                    if let ticketId = json["ticketPurchaseId"] as? Int {
+                        self.appSpecificTicketPurchaseId = ticketId
+                        UserDefaults.standard.set(ticketId, forKey: "ticketPurchaseId_from_createOrder") // Save it for captureOrder
+                        print("✅ [PaymentManager] Stored appSpecificTicketPurchaseId: \(ticketId)")
                     }
-                    return
-                }
-
-                guard let http = resp as? HTTPURLResponse else {
-                    print("❌ Response was not HTTPURLResponse")
-                    DispatchQueue.main.async {
-                        completion(.failure(.invalidResponse))
-                    }
-                    return
-                }
-
-                print("🔍 HTTP Status Code:", http.statusCode)
-                print("🔍 HTTP Headers:", http.allHeaderFields)
-
-                guard let d = data else {
-                    print("❌ Response data is nil")
-                    DispatchQueue.main.async {
-                        completion(.failure(.invalidResponse))
-                    }
-                    return
-                }
-
-                let responseBody = String(data: d, encoding: .utf8) ?? "<no body>"
-                print("🔍 Response body:", responseBody)
-
-                guard (200..<400).contains(http.statusCode) else {
-                    print("❌ Status code out of range:", http.statusCode)
-                    DispatchQueue.main.async {
-                        completion(.failure(.serverError("HTTP \(http.statusCode): \(responseBody)")))
-                    }
-                    return
-                }
-
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: d) as? [String: Any],
-                       let approvalURLString = json["approval_url"] as? String,
-                       let paymentId = json["payment_id"] as? String,
+                    if let approvalURLString = json["approval_url"] as? String,
+                       let paymentId = json["payment_id"] as? String, // PayPal's Payment ID
                        let approvalURL = URL(string: approvalURLString) {
-
-                        self.payPalPaymentIdForCapture = paymentId
-
-                        if let ticketPurchaseId = json["ticketPurchaseId"] as? Int {
-                            UserDefaults.standard.set(ticketPurchaseId, forKey: "ticketPurchaseId")
-                        }
-
-                        print("✅ Parsed PayPal approval URL successfully:", approvalURL)
+                        self.payPalPaymentIdForCapture = paymentId // Store PayPal's payment ID
                         DispatchQueue.main.async {
                             completion(.success(approvalURL))
                         }
-                    } else {
-                        throw PaymentError.parseError("Missing approval_url or payment_id in JSON")
+                        return // Success path
                     }
-                } catch {
-                    print("⚠️ JSON parse error:", error.localizedDescription)
-                    DispatchQueue.main.async {
-                        completion(.failure(.parseError("Failed to parse JSON: \(error.localizedDescription)")))
-                    }
+                }
+                // Fallthrough for errors
+                DispatchQueue.main.async {
+                     let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no data>"
+                     print("❌ [PaymentManager] createOrder failed to parse approval_url or payment_id. Body: \(responseBody)")
+                     completion(.failure(.parseError("Missing approval_url or payment_id in response. Body: \(responseBody)")))
                 }
             }.resume()
         }
