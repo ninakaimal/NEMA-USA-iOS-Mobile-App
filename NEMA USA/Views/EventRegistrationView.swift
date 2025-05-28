@@ -45,7 +45,6 @@ struct EventRegistrationView: View {
     
     init(event: Event) {
         self.event = event
-        // ... (your existing UINavigationBar appearance setup - this is fine for now) ...
         // Note: For modern SwiftUI, consider applying these modifiers directly to the NavigationView if possible.
         if #available(iOS 15.0, *) {
             let appearance = UINavigationBarAppearance()
@@ -68,8 +67,10 @@ struct EventRegistrationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLoginSheet, onDismiss: {
                 loadMemberInfo()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    viewModel.objectWillChange.send()
+                let refreshDelay = attemptedLoginForMemberPrice ? 0.5 : 0.25 // Slightly longer if member price was the goal
+                DispatchQueue.main.asyncAfter(deadline: .now() + refreshDelay) {
+                    self.loadMemberInfo()
+                    self.viewModel.objectWillChange.send()
                 }
 
                 // This block seems fine, assuming userInitiatedLogin is correctly declared as @State
@@ -195,7 +196,7 @@ struct EventRegistrationView: View {
               
                 // Add Login/Member Status Button
                 if DatabaseManager.shared.jwtApiToken == nil { // Only show if not logged in
-                    Button("Login for Member Pricing / Account") {
+                    Button("Login for Member Pricing!") {
                         userInitiatedLogin = true
                         attemptedLoginForMemberPrice = true
                         pendingPurchase = false
@@ -206,7 +207,7 @@ struct EventRegistrationView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else if let user = DatabaseManager.shared.currentUser {
-                     Text(user.isMember ? "Member prices are automatically applied." : "Not a NEMA member. Public prices apply.")
+                     Text(user.isMember ? "Member prices are automatically applied" : "Not a NEMA member, non-member prices apply")
                         .font(.caption)
                         .foregroundColor(user.isMember ? .green : .orange)
                         .padding(.top, 5)
@@ -256,51 +257,50 @@ struct EventRegistrationView: View {
         }
     }
     
-    // MARK: - Dynamic Ticket Selection Card (Replaces old hardcoded ticketCard)
+    // MARK: - Dynamic Ticket Selection Card
     private var ticketSelectionCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if viewModel.availableTicketTypes.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
-                Text("Ticket information will be available soon.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 20) // Add some padding if it's the only thing shown
-            } else {
-                ForEach(viewModel.availableTicketTypes) { ticketType in
-                    let isUserActuallyMember = DatabaseManager.shared.currentUser?.isMember ?? false
-                    if ticketType.isTicketTypeMemberExclusive == true && !isUserActuallyMember {
-                        // Skip rendering this ticket type for non-members if it's exclusive
-                    } else {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(ticketType.typeName):")
-                                    .font(.headline)
-                                Text("$\(String(format: "%.2f", viewModel.price(for: ticketType))) each")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Stepper(
-                                "\(viewModel.ticketQuantities[ticketType.id] ?? 0)",
-                                value: Binding(
-                                    get: { viewModel.ticketQuantities[ticketType.id] ?? 0 },
-                                    set: { newValue in viewModel.ticketQuantities[ticketType.id] = max(0, newValue) }
-                                ),
-                                in: 0...20 // Max quantity (adjust as needed)
-                            )
-                        }
-                        // Add Divider only if it's not the last item
-                        if viewModel.availableTicketTypes.last?.id != ticketType.id {
-                            Divider()
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
-        .padding(.horizontal)
-    }
+         VStack(alignment: .leading, spacing: 16) {
+             if viewModel.availableTicketTypes.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
+                 Text("Ticket information will be available soon.")
+                     .font(.subheadline)
+                     .foregroundColor(.secondary)
+                     .padding(.vertical, 20)
+             } else {
+                 ForEach(viewModel.availableTicketTypes) { ticketType in
+                     let isUserActuallyMember = DatabaseManager.shared.currentUser?.isMember ?? false
+                     if ticketType.isTicketTypeMemberExclusive == true && !isUserActuallyMember {
+                         // Skip rendering this ticket type for non-members if it's exclusive
+                     } else {
+                         HStack {
+                             VStack(alignment: .leading, spacing: 2) {
+                                 Text("\(ticketType.typeName):") // Restored colon from old code
+                                     .font(.headline)
+                                 Text("$\(String(format: "%.2f", viewModel.price(for: ticketType))) each")
+                                     .font(.caption)
+                                     .foregroundColor(.secondary)
+                             }
+                             Spacer()
+                             Stepper( // Standard Stepper restored from old code
+                                 "\(viewModel.ticketQuantities[ticketType.id] ?? 0)",
+                                 value: Binding(
+                                     get: { viewModel.ticketQuantities[ticketType.id] ?? 0 },
+                                     set: { newValue in viewModel.ticketQuantities[ticketType.id] = max(0, newValue) }
+                                 ),
+                                 in: 0...20 // Max quantity (adjust as needed)
+                             )
+                         }
+                         if viewModel.availableTicketTypes.last?.id != ticketType.id {
+                             Divider()
+                         }
+                     }
+                 }
+             }
+         }
+         .padding()
+         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+         .padding(.horizontal)
+     }
     
     private var termsCard: some View {
         VStack(alignment: .leading, spacing: 16) {

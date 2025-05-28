@@ -1261,21 +1261,40 @@ final class NetworkManager: NSObject {
                 print("⚠️ [Registration Error] HTTP \(http.statusCode): \(bodyText)")
                 
                 // ✅ Add Laravel Validation error parsing:
-                if http.statusCode == 422,
-                   let errorJson = try? JSONSerialization.jsonObject(with: bytes, options: []) as? [String: Any],
-                   let errorDict = errorJson["errors"] as? [String: [String]] {
-                    let messages = errorDict.values.flatMap { $0 }.joined(separator: ", ")
-                    DispatchQueue.main.async {
-                        completion(.failure(.serverError(messages)))
+                if http.statusCode == 422 {
+                    do {
+                        // Attempt to parse the JSON error structure: {"error":{"field":["message"]}}
+                        if let errorJson = try JSONSerialization.jsonObject(with: bytes, options: []) as? [String: Any],
+                           // PRECISION UPDATE: Change "errors" to "error" to match your backend response
+                           let errorDetailDict = errorJson["error"] as? [String: [String]] {
+                            
+                            // Consolidate all error messages
+                            let messages = errorDetailDict.flatMap { $0.value }.joined(separator: "\n")
+                            DispatchQueue.main.async {
+                                completion(.failure(.serverError(messages.isEmpty ? "Validation failed. Please check your input." : messages)))
+                            }
+                        } else {
+                            // If parsing the specific error structure fails, return a generic validation error or the bodyText
+                            DispatchQueue.main.async {
+                                completion(.failure(.serverError("Validation error. Details: \(bodyText)")))
+                            }
+                        }
+                    } catch {
+                        // If JSONSerialization itself fails
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError("Could not parse validation error response. Body: \(bodyText)")))
+                        }
                     }
                 } else {
+                    // For other non-2xx, non-422 errors
                     DispatchQueue.main.async {
-                        completion(.failure(.invalidResponse))
+                        completion(.failure(.serverError("Server error: \(http.statusCode). \(bodyText)")))
                     }
                 }
                 return
             }
             
+            // Successful registration (2xx)
             do {
                 let loginResp = try JSONDecoder().decode(LoginResponse.self, from: bytes)
                 DatabaseManager.shared.saveJwtApiToken(loginResp.token)
@@ -1289,12 +1308,16 @@ final class NetworkManager: NSObject {
                             UserDefaults.standard.set(profile.id, forKey: "userId")
                             completion(.success((token: loginResp.token, user: profile)))
                         case .failure(let err):
+                            // Successful registration but failed to fetch profile immediately after
                             completion(.failure(err))
                         }
                     }
                 }
             } catch {
+                // This catch is for failure to decode LoginResponse on a 2xx status
                 DispatchQueue.main.async {
+                    let responseBody = String(data: bytes, encoding: .utf8) ?? "No data"
+                    print("❌ [Registration Success Decode Error] Failed to decode LoginResponse. Body: \(responseBody). Error: \(error)")
                     completion(.failure(.decodingError(error)))
                 }
             }

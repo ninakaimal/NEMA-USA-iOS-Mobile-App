@@ -36,6 +36,9 @@
         @State private var currentActionIsRenewal: Bool = false // Tracks if the action is renewal or new
         @State private var paymentDataFromPayPal: PaymentConfirmationResponse? // Holds response from PayPalView
         
+        // State for membership button processing
+        @State private var isProcessingMembershipAction: Bool = false
+        
         var body: some View {
             NavigationView {
                 contentView
@@ -59,6 +62,7 @@
             }
             .sheet(item: $approvalURL, onDismiss: {
                 approvalURL = nil
+                isProcessingMembershipAction = false  // Re-enable button if sheet is dismissed
                 if !showPurchaseSuccess { // If PayPal sheet is dismissed early
                     // Reset state if payment wasn't completed
                     // currentActionIsRenewal can remain as set by the button
@@ -83,6 +87,11 @@
             }
             .onAppear {
                 self.loadAllData()
+                if membershipOptions.isEmpty { // Ensure a default selection if options load later
+                               fetchPackages()
+                           } else if selectedPackageIndex >= membershipOptions.count && !membershipOptions.isEmpty {
+                               selectedPackageIndex = 0
+                           }
             }
             .onChange(of: profile) { newProfileValue in
                 if let p = newProfileValue {
@@ -124,7 +133,7 @@
                             if isEditingProfile { saveProfile() }
                             if isEditingFamily { saveFamily() }
                         }
-                        .disabled(isUpdating)
+                        .disabled(isUpdating || isProcessingMembershipAction)
                         Button("Cancel") {
                             isEditingProfile = false
                             isEditingFamily = false
@@ -161,7 +170,6 @@
         
         private func profileCard(profileData: UserProfile) -> some View {
             VStack(alignment: .leading, spacing: 16) {
-                // ... (existing HStack for name and circle) ...
                 HStack(spacing: 16) {
                     Circle()
                         .fill(Color.orange)
@@ -218,9 +226,12 @@
                         HStack {
                             Spacer()
                             Button(action: {
+                                self.isProcessingMembershipAction = true
                                 guard selectedPackageIndex < membershipOptions.count else {
                                     paymentErrorMessage = "Please select a valid membership package."
-                                    showPaymentError = true; return
+                                    showPaymentError = true
+                                    self.isProcessingMembershipAction = false // Reset on early exit
+                                    return
                                 }
                                 let pkg = membershipOptions[selectedPackageIndex]
                                 
@@ -250,10 +261,12 @@
                                   //  lineItems: nil, // Not passing lineItems for membership
                                     completion: { result in
                                         DispatchQueue.main.async {
+                                            self.isProcessingMembershipAction = false
                                             switch result {
                                             case .success(let url):
                                                 self.approvalURL = url
                                             case .failure(let err):
+                                                self.isProcessingMembershipAction = false // Explicitly reset on direct failure
                                                 self.handlePaymentManagerError(err, context: "membership payment")
                                             }
                                         }
@@ -261,10 +274,23 @@
                                 )
                             }) {
 
-                                Text(profileData.isMember ? "Renew Membership" : "Become a Member")
+                                if isProcessingMembershipAction {
+                                    HStack (spacing: 5) {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white)) // Assuming white text on orange button
+                                        Text("Processing...")
+                                    }
+                                } else {
+                                    Text(profileData.isMember ? "Renew Membership" : "Become a Member")
+                                }
                             }
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.orange)
+                            .font(.subheadline)
+                            .padding(.horizontal, 10) // Adjusted padding for "smaller" feel
+                            .padding(.vertical, 6)
+                            .background(isProcessingMembershipAction ? Color.gray : Color.orange) // Background changes if processing
+                            .foregroundColor(.white)
+                            .cornerRadius(6)
+                            .disabled(isProcessingMembershipAction || isUpdating) // Disable when processing or other updates
                             Spacer()
                         }
                     } else {
@@ -477,10 +503,13 @@
             
         private func loadAllData() {
             print("🔄 [AccountView] loadAllData called.")
-            loadLocalProfile()
-            loadRemoteProfile() // This will also trigger loadMembership after profile fetch
+            if self.profile == nil { // Only load from cache if profile isn't already set (e.g. from a previous load)
+                        loadLocalProfile()
+                    }
+            
+            loadRemoteProfile()  // This calls loadMembership internally on success
             loadFamily()
-            fetchPackages()
+            fetchPackages()  // Fetch available membership packages
         }
         
         private func fetchPackages() {
@@ -500,42 +529,48 @@
         }
         
         private func loadMembership() {
-            // Use self.profile if available and has a valid ID, otherwise try DatabaseManager.shared.currentUser
-            guard let effectiveProfile = self.profile ?? DatabaseManager.shared.currentUser, effectiveProfile.id != 0 else {
-                print("ℹ️ [AccountView] loadMembership: No user profile ID (or ID is 0), cannot fetch membership.")
-                // If no profile ID, ensure UI reflects "Not a member" state by clearing cachedExpiryRaw
+            guard let effectiveProfileID = self.profile?.id, effectiveProfileID != 0 else {
+                print("ℹ️ [AccountView.loadMembership] No valid user profile ID (current self.profile is nil or ID is 0), cannot fetch membership.")
                 self.cachedExpiryRaw = nil
-                if var p = self.profile { p.membershipExpiryDate = nil; self.profile = p; }
+                self.membershipId = nil
+                if var p = self.profile { // Should not happen if guard above is effective, but defensive.
+                    p.membershipExpiryDate = nil
+                    self.profile = p
+                    DatabaseManager.shared.saveUser(p)
+                }
                 return
             }
             
+            print("ℹ️ [AccountView.loadMembership] Fetching membership for User ID: \(effectiveProfileID)")
             NetworkManager.shared.fetchMembership { result in
                 DispatchQueue.main.async {
+                    var serverExpiryDate: String? = nil
                     switch result {
                     case .success(let membership):
-                        print("✅ [AccountView] Fetched membership. DB Expiry: \(membership.exp_date), ID: \(membership.id)")
-                        self.cachedExpiryRaw = membership.exp_date
-                        self.membershipId = membership.id // <-- Make sure membershipId is set
-
-                        if var p = self.profile, p.id == membership.user_id { // Ensure we're updating the correct profile
-                            p.membershipExpiryDate = membership.exp_date
-                            self.profile = p // This updates the @State
-                            DatabaseManager.shared.saveUser(p) // Save updated profile to cache
-                        } else if var cachedUser = DatabaseManager.shared.currentUser, cachedUser.id == membership.user_id {
-                             // This case handles if self.profile wasn't set yet from a fresh remote fetch
-                            cachedUser.membershipExpiryDate = membership.exp_date
-                            DatabaseManager.shared.saveUser(cachedUser)
-                            self.profile = cachedUser
+                        if membership.user_id == effectiveProfileID {
+                            print("✅ [AccountView.loadMembership] Fetched membership. DB Expiry: \(membership.exp_date), UserID in record: \(membership.user_id)")
+                            serverExpiryDate = membership.exp_date
+                            self.membershipId = membership.id
+                        } else {
+                            print("⚠️ [AccountView.loadMembership] Fetched membership's user_id (\(membership.user_id)) does not match current profile ID (\(effectiveProfileID)). Ignoring this membership data.")
+                            // This implies the membership data is not for the current user, so treat as no membership found.
+                            serverExpiryDate = nil
                         }
-
                     case .failure(let err):
-                        print("⚠️ [AccountView] Failed to fetch membership details: \(err.localizedDescription)")
-                        // On failure, it might mean no active membership or an error.
-                        // Clearing local expiry might be appropriate if the error indicates "not found."
-                        // For now, retaining the cached one on general error. If error is 404 Not Found, then clear.
-                        if case NetworkError.invalidResponse = err { // Example: 404 from backend
-                            self.cachedExpiryRaw = nil
-                            if var p = self.profile { p.membershipExpiryDate = nil; self.profile = p; DatabaseManager.shared.saveUser(p); }
+                        print("⚠️ [AccountView.loadMembership] Failed to fetch membership details: \(err.localizedDescription)")
+                        // If fetch fails (e.g., 404 if no membership exists), it means no active membership on server.
+                        serverExpiryDate = nil
+                    }
+
+                    // Update AppStorage and @State profile *only after* getting a definitive server response (success or failure indicating no membership)
+                    self.cachedExpiryRaw = serverExpiryDate // Update @AppStorage with server's truth (could be nil)
+                    
+                    if var p = self.profile, p.id == effectiveProfileID { // Ensure we're updating the correct profile
+                        if p.membershipExpiryDate != serverExpiryDate {
+                             p.membershipExpiryDate = serverExpiryDate
+                             self.profile = p // Update @State to trigger UI
+                             DatabaseManager.shared.saveUser(p) // Persist the updated profile
+                             print("✅ [AccountView.loadMembership] Updated self.profile.membershipExpiryDate with server value: \(serverExpiryDate ?? "nil")")
                         }
                     }
                 }
@@ -543,10 +578,26 @@
         }
         
         private func loadLocalProfile() {
-            if let cached = DatabaseManager.shared.currentUser {
-                self.profile = cached
-                self.userId = cached.id // Sync @AppStorage userId
-                print("ℹ️ [AccountView] Loaded profile from cache: \(cached.name), ID: \(cached.id)")
+            if let cachedUser = DatabaseManager.shared.currentUser {
+                // Only update self.profile if it's nil or different, to reduce needless view updates.
+                var shouldUpdateProfileState = self.profile == nil
+                if let currentP = self.profile, currentP.id != cachedUser.id || currentP.name != cachedUser.name {
+                    shouldUpdateProfileState = true
+                }
+
+                if shouldUpdateProfileState {
+                    self.profile = cachedUser
+                }
+                // Prime cachedExpiryRaw from the local UserProfile if it's not already set by a more recent server fetch
+                if self.cachedExpiryRaw == nil, let localExpiry = cachedUser.membershipExpiryDate {
+                    self.cachedExpiryRaw = localExpiry
+                }
+                self.userId = cachedUser.id
+                print("ℹ️ [AccountView.loadLocalProfile] Profile set from cache: \(cachedUser.name). Current cachedExpiryRaw: \(self.cachedExpiryRaw ?? "nil")")
+            } else {
+                print("ℹ️ [AccountView.loadLocalProfile] No profile in cache.")
+                self.profile = nil // Ensure profile is nil if nothing in cache
+                self.cachedExpiryRaw = nil // And clear cached expiry
             }
         }
 
@@ -563,20 +614,33 @@
             NetworkManager.shared.fetchProfileJSON { result in // Assumes fetchProfileJSON uses JWT
                 DispatchQueue.main.async {
                     switch result {
-                    case .success(let freshProfile):
+                    case .success(var freshProfile):
+                        if freshProfile.membershipExpiryDate == nil {
+                            if let existingProfileExpiry = self.profile?.membershipExpiryDate {
+                                print("ℹ️ [AccountView.loadRemoteProfile] Fetched profile lacks expiry, preserving current self.profile.membershipExpiryDate: \(existingProfileExpiry)")
+                                freshProfile.membershipExpiryDate = existingProfileExpiry
+                            } else if let cachedRaw = self.cachedExpiryRaw {
+                                // Fallback to @AppStorage if current self.profile also had no expiry
+                                print("ℹ️ [AccountView.loadRemoteProfile] Fetched profile lacks expiry, self.profile also lacks, using cachedExpiryRaw: \(cachedRaw)")
+                                freshProfile.membershipExpiryDate = cachedRaw
+                            }
+                        }
                         DatabaseManager.shared.saveUser(freshProfile)
                         self.profile = freshProfile
-                        self.cachedExpiryRaw = freshProfile.membershipExpiryDate
-                        self.userId = freshProfile.id
-                        print("✅ [AccountView] Fetched and updated remote profile: \(freshProfile.name), ID: \(freshProfile.id)")
-                        self.loadMembership() // Refresh membership status after profile is updated
+                        if freshProfile.id != 0 { // Ensure userId is valid before setting
+                            self.userId = freshProfile.id
+                        }
+                        print("✅ [AccountView.loadRemoteProfile] Fetched/Updated remote profile: \(freshProfile.name), ID: \(freshProfile.id). Profile's current expiry for UI (pre-loadMembership): \(self.profile?.membershipExpiryDate ?? "nil")")
+
                     case .failure(let err):
                         print("⚠️ [AccountView] Failed to fetch remote profile: \(err.localizedDescription)")
                         if case NetworkError.invalidResponse = err { // e.g. 401 Unauthorized
                             print("‼️ Session might have expired. Clearing auth token.")
                             self.authToken = nil // Trigger re-login
+                            return
                         }
                     }
+                    self.loadMembership()
                 }
             }
         }

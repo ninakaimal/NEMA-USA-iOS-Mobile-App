@@ -313,9 +313,24 @@ struct RegistrationView: View {
                     alertMessage = "Welcome to NEMA! Your account has been created successfully."
                     showAlert = true
                 case .failure(let err):
-                    alertTitle = "Registration Failed. Please try again or contact NEMA."
+                    alertTitle = "Registration Failed"
                     alertMessage = err.localizedDescription
                     showAlert = true
+                    
+                    // PRECISION UPDATE: Display the specific server message if available
+                    switch err {
+                        case .serverError(let specificMessage):
+                            // This `specificMessage` should now be "The email has already been taken."
+                            alertMessage = specificMessage
+                        case .invalidResponse:
+                            alertMessage = "Invalid data or server response. Please check your input and try again."
+                        case .decodingError:
+                            alertMessage = "Could not process the server's response. Please try again later."
+                        // No default needed as NetworkError cases are covered
+                        }
+                        // If you want to append the generic error for debugging:
+                        // alertMessage += " (Details: \(err.localizedDescription))"
+                        showAlert = true
                 }
             }
         }
