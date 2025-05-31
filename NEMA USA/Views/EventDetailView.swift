@@ -235,5 +235,5 @@ struct EventDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .accentColor(.white)
     }
-}
+} // end of file
 

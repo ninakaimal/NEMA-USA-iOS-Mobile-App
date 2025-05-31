@@ -88,7 +88,7 @@ final class NetworkManager: NSObject {
             }
             
             do {
-                let loginResp = try JSONDecoder().decode(LoginResponse.self, from: d)
+                let loginResp = try self.iso8601JSONDecoder.decode(LoginResponse.self, from: d)
                 DatabaseManager.shared.saveJwtApiToken(loginResp.token)
                 DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
                 
@@ -139,40 +139,81 @@ final class NetworkManager: NSObject {
                           delegateQueue: nil)
     }()
     
-    // Inside your NetworkManager class
-
     private lazy var iso8601JSONDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        let formatter = ISO8601DateFormatter()
 
-        // These options are crucial for parsing "YYYY-MM-DDTHH:MM:SSZHH:MM" (e.g., "2023-08-22T22:17:12-04:00")
-        formatter.formatOptions = [
-            .withInternetDateTime,          // General YYYY-MM-DDTHH:MM:SS
-            .withDashSeparatorInDate,       // Ensures YYYY-MM-DD
-            .withColonSeparatorInTime,      // Ensures HH:MM:SS
-            .withColonSeparatorInTimeZone   // Crucial for ZHH:MM (like -04:00)
+        // Formatter 1: Handles dates with timezone offset AND fractional seconds (e.g., "2025-05-28T23:59:42.123-04:00")
+        let formatterWithFractionalSecondsOffset = ISO8601DateFormatter()
+        formatterWithFractionalSecondsOffset.formatOptions = [
+            .withInternetDateTime,
+            .withDashSeparatorInDate,
+            .withColonSeparatorInTime,
+            .withFractionalSeconds,
+            .withColonSeparatorInTimeZone
         ]
-        // If your dates *never* have fractional seconds, DO NOT include .withFractionalSeconds here,
-        // as it can sometimes make the parser stricter if they are absent.
-        // If some dates have them and some don't, this single formatter might struggle,
-        // and a more complex custom strategy might be needed (trying multiple formatters).
+
+        // Formatter 2: Handles dates with timezone offset but NO fractional seconds (e.g., "2025-05-29T20:43:10-04:00")
+        // THIS IS LIKELY THE ONE NEEDED FOR YOUR PANTHI `last_updated_at`
+        let formatterWithoutFractionalSecondsOffset = ISO8601DateFormatter()
+        formatterWithoutFractionalSecondsOffset.formatOptions = [
+            .withInternetDateTime,
+            .withDashSeparatorInDate,
+            .withColonSeparatorInTime,
+            .withColonSeparatorInTimeZone
+        ]
+        
+        // Formatter 3: Handles Zulu time (UTC) with fractional seconds (e.g., "2025-05-28T20:44:34.465Z")
+        let formatterZuluWithFractionalSeconds = ISO8601DateFormatter()
+        formatterZuluWithFractionalSeconds.formatOptions = [
+            .withInternetDateTime,
+            .withDashSeparatorInDate,
+            .withColonSeparatorInTime,
+            .withFractionalSeconds,
+            .withTimeZone // Handles 'Z' for Zulu/UTC
+        ]
+
+        // Formatter 4: Handles Zulu time (UTC) WITHOUT fractional seconds (e.g., "2025-05-28T20:44:34Z")
+        let formatterZuluWithoutFractionalSeconds = ISO8601DateFormatter()
+        formatterZuluWithoutFractionalSeconds.formatOptions = [
+            .withInternetDateTime,
+            .withDashSeparatorInDate,
+            .withColonSeparatorInTime,
+            .withTimeZone // Handles 'Z' for Zulu/UTC
+        ]
+        
+        // Formatter 5: Date only (e.g., "2025-06-18" for early_bird_end_date if it's just a date)
+        let formatterDateOnly = ISO8601DateFormatter()
+        formatterDateOnly.formatOptions = [.withFullDate, .withDashSeparatorInDate]
 
         decoder.dateDecodingStrategy = .custom { decoder throws -> Date in
             let container = try decoder.singleValueContainer()
             let dateString = try container.decode(String.self)
+            let codingPathString = container.codingPath.map { $0.stringValue }.joined(separator: ".")
 
-            if let date = formatter.date(from: dateString) {
+            // Attempt to decode with the various formatters
+            if let date = formatterWithoutFractionalSecondsOffset.date(from: dateString) {
                 return date
-            } else {
-                // Log the problematic string for debugging if primary formatter fails
-                print("🚨 Custom Date Decoding Failed: String '\(dateString)' could not be parsed by the primary ISO8601 formatter.")
-                throw DecodingError.dataCorruptedError(in: container,
-                                                       debugDescription: "Date string '\(dateString)' does not match expected ISO 8601 format.")
             }
+            if let date = formatterWithFractionalSecondsOffset.date(from: dateString) {
+                return date
+            }
+            if let date = formatterZuluWithoutFractionalSeconds.date(from: dateString) {
+                return date
+            }
+            if let date = formatterZuluWithFractionalSeconds.date(from: dateString) {
+                return date
+            }
+            if let date = formatterDateOnly.date(from: dateString) {
+                return date
+            }
+            
+            print("🚨 Custom Date Decoding Failed for key path '\(codingPathString)': String '\(dateString)' could not be parsed by any configured ISO8601 formatter.")
+            throw DecodingError.dataCorruptedError(in: container,
+                                                 debugDescription: "Date string '\(dateString)' at path '\(codingPathString)' does not match any expected ISO8601 format.")
         }
 
-        // If your JSON keys are snake_case (e.g., "last_updated_at") and your Swift
-        // struct properties are camelCase (e.g., "lastUpdatedAt"), add this:
+        // CRITICAL: Ensure this line is present and uncommented.
+        // This maps JSON keys like "last_updated_at" to Swift properties like `lastUpdatedAt`.
         // decoder.keyDecodingStrategy = .convertFromSnakeCase
 
         return decoder
@@ -609,7 +650,7 @@ final class NetworkManager: NSObject {
                 let d = data
             else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
             do {
-                let packs = try JSONDecoder().decode([MobileMembershipPackage].self, from: d)
+                let packs = try self.iso8601JSONDecoder.decode([MobileMembershipPackage].self, from: d)
                 DispatchQueue.main.async { completion(.success(packs)) }
             } catch {
                 DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
@@ -635,7 +676,7 @@ final class NetworkManager: NSObject {
                 let d = data
             else { return DispatchQueue.main.async { completion(.failure(.invalidResponse)) } }
             do {
-                let m = try JSONDecoder().decode(Membership.self, from: d)
+                let m = try self.iso8601JSONDecoder.decode(Membership.self, from: d)
                 DispatchQueue.main.async { completion(.success(m)) }
             } catch {
                 DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
@@ -722,7 +763,6 @@ final class NetworkManager: NSObject {
             case .failure(let e): completion(.failure(e))
             case .success(let data):
                 do {
-                    // Assuming JSONDecoder is configured for snake_case if necessary,
                     // and your Membership struct matches the backend response.
                     let m = try self.iso8601JSONDecoder.decode(Membership.self, from: data)
                     completion(.success(m))
@@ -760,7 +800,7 @@ final class NetworkManager: NSObject {
                 }
             }
             do {
-                let profile = try JSONDecoder().decode(UserProfile.self, from: d)
+                let profile = try self.iso8601JSONDecoder.decode(UserProfile.self, from: d)
                 // ✅ store the user-id for future calls
                 UserDefaults.standard.set(profile.id, forKey: "userId")
                 DispatchQueue.main.async {
@@ -971,8 +1011,26 @@ final class NetworkManager: NSObject {
             // Assuming API returns an array of Event objects directly
             // Use your configured decoder
             let fetchedEvents = try self.iso8601JSONDecoder.decode([Event].self, from: data)
+            
+            // <<< DETAILED DEBUG LOGGING for fetchedEvents >>>
+            if fetchedEvents.isEmpty {
+                print("‼️ [NetworkManager.fetchEvents] Decoding Succeeded but produced an EMPTY array of Events.")
+            } else {
+                print("✅ [NetworkManager.fetchEvents] Successfully decoded \(fetchedEvents.count) events.")
+                for (index, event) in fetchedEvents.prefix(5).enumerated() { // Log first 5 events
+                    print("   Event \(index): ID=\(event.id), Title='\(event.title)'")
+                    print("     imageUrl: \(event.imageUrl ?? "NIL in decoded Event struct")")
+                    print("     isRegON: \(String(describing: event.isRegON))") // Use String(describing:) for Bool?
+                    print("     usesPanthi: \(String(describing: event.usesPanthi))")
+                    print("     date: \(String(describing: event.date))")
+                    print("     lastUpdatedAt: \(String(describing: event.lastUpdatedAt))")
+                }
+            }
+            // <<< END DEBUG LOGGING >>>
+            
             return (fetchedEvents, [])
         } catch {
+            print("❌❌❌ [NetworkManager.fetchEvents] CRITICAL DECODING ERROR: \(error)") // More prominent error
             if let decodingError = error as? DecodingError {
                 switch decodingError {
                 case .typeMismatch(let type, let context):
@@ -1187,7 +1245,7 @@ final class NetworkManager: NSObject {
                 }
             }
             do {
-                let decoded = try JSONDecoder().decode(RefreshResponse.self, from: bytes)
+                let decoded = try self.iso8601JSONDecoder.decode(RefreshResponse.self, from: bytes)
                 DatabaseManager.shared.saveJwtApiToken(decoded.token)
                 DatabaseManager.shared.saveRefreshToken(decoded.refreshToken)
                 DispatchQueue.main.async { completion(.success(decoded.token)) }
@@ -1296,7 +1354,7 @@ final class NetworkManager: NSObject {
             
             // Successful registration (2xx)
             do {
-                let loginResp = try JSONDecoder().decode(LoginResponse.self, from: bytes)
+                let loginResp = try self.iso8601JSONDecoder.decode(LoginResponse.self, from: bytes)
                 DatabaseManager.shared.saveJwtApiToken(loginResp.token)
                 DatabaseManager.shared.saveRefreshToken(loginResp.refreshToken)
                 
@@ -1355,4 +1413,4 @@ extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
             completionHandler(request)
         }
     }
-}
+} // end of file

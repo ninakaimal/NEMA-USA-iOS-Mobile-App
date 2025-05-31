@@ -39,6 +39,24 @@
         // State for membership button processing
         @State private var isProcessingMembershipAction: Bool = false
         
+        private static let accountViewIsoDateTimeFormatter: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            // This configuration should be robust enough for typical full date-time strings
+            // It tries to be lenient by default by not specifying .withFractionalSeconds.
+            // If your expiry dates ALWAYS have fractional seconds, add .withFractionalSeconds.
+            // If they sometimes do, sometimes don't, this might need more logic OR the string might be pre-processed.
+            formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withTimeZone, .withFractionalSeconds]
+            return formatter
+        }()
+
+        private static let accountViewDateOnlyFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0) // Assuming UTC for date-only strings if not specified
+            return formatter
+        }()
+        
         var body: some View {
             NavigationView {
                 contentView
@@ -331,30 +349,37 @@
                     Text("No family members added yet. Tap 'Edit' to add.").font(.subheadline).foregroundColor(.gray)
                         .padding().frame(maxWidth: .infinity, alignment: .center)
                 } else {
-                    ForEach($family) { $member in // Use binding here
-                        VStack(alignment: .leading, spacing: 8) {
-                            EditableInfoRow(label: "Name", text: $member.name, isEditing: isEditingFamily)
-                            EditableInfoRow(label: "Relation", text: $member.relationship, isEditing: isEditingFamily)
-                            EditableInfoRow(label: "Email", text: Binding( // Custom binding for optional String
-                                get: { member.email ?? "" }, set: { member.email = $0.isEmpty ? nil : $0 }
-                            ), isEditing: isEditingFamily, keyboardType: .emailAddress)
-                            
-                            EditableInfoRow(
-                                label: "DOB",
-                                text: Binding(
-                                get: { member.dob ?? "" },
-                                set: { member.dob = $0.isEmpty ? nil : $0 }
-                            ),
-                                isEditing: isEditingFamily,
-                                placeholder: "YYYY-MM-DD"
-                                )
-                            EditableInfoRow(label: "Phone", text: Binding(
-                                get: { member.phone ?? "" }, set: { member.phone = $0.isEmpty ? nil : $0 }
-                            ), isEditing: isEditingFamily, keyboardType: .phonePad)
+                    VStack(spacing: 12) { // This VStack will group all family member cards
+                        ForEach($family) { $member in
+                            VStack(alignment: .leading, spacing: 8) {
+                                EditableInfoRow(label: "Name", text: $member.name, isEditing: isEditingFamily)
+                                EditableInfoRow(label: "Relation", text: $member.relationship, isEditing: isEditingFamily)
+                                EditableInfoRow(label: "Email", text: Binding(
+                                    get: { member.email ?? "" }, set: { member.email = $0.isEmpty ? nil : $0 }
+                                ), isEditing: isEditingFamily, keyboardType: .emailAddress)
+                                
+                                EditableInfoRow(
+                                    label: "DOB",
+                                    text: Binding(
+                                    get: { member.dob ?? "" },
+                                    set: { member.dob = $0.isEmpty ? nil : $0 }
+                                ),
+                                    isEditing: isEditingFamily,
+                                    placeholder: "YYYY-MM-DD"
+                                    )
+                                EditableInfoRow(label: "Phone", text: Binding(
+                                    get: { member.phone ?? "" }, set: { member.phone = $0.isEmpty ? nil : $0 }
+                                ), isEditing: isEditingFamily, keyboardType: .phonePad)
+                            }
+                            .padding() // Inner padding for content within the card
+                            .frame(maxWidth: .infinity, alignment: .leading) // Make VStack take full width
+                            .background(Color(.secondarySystemBackground)) // Apply background to full-width VStack
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.05), radius: 3, y: 2)
+                            // Removed .padding(.horizontal) from individual cards
                         }
-                        .padding().background(Color(.secondarySystemBackground)).cornerRadius(12)
-                        .shadow(color: Color.black.opacity(0.05), radius: 3, y: 2).padding(.horizontal)
                     }
+                    .padding(.horizontal) // Apply horizontal padding to the group of cards
                 }
             }
         }
@@ -409,23 +434,28 @@
             // MARK: – Date formatting helpers
             
         private func formatDate(_ dateString: String) -> String {
-            // Using Event's static formatters if they are accessible and cover necessary formats
-            if let date = Event.iso8601DateTimeFormatter.date(from: dateString) { return longStyle(date) }
-    //        if let date = Event.iso8601DateOnlyFormatter.date(from: dateString) { return longStyle(date) } // For "yyyy-MM-dd"
+            // Try full ISO8601 date-time first
+            if let date = AccountView.accountViewIsoDateTimeFormatter.date(from: dateString) {
+                return longStyle(date)
+            }
+            // Then try date-only "yyyy-MM-dd"
+            if let date = AccountView.accountViewDateOnlyFormatter.date(from: dateString) {
+                return longStyle(date)
+            }
             // Fallback for "yyyy-MM"
             if dateString.count == 7 && dateString.contains("-") {
-                 let monthFormatter = DateFormatter()
-                 monthFormatter.dateFormat = "yyyy-MM"
-                 monthFormatter.locale = Locale(identifier: "en_US_POSIX")
-                 if let date = monthFormatter.date(from: dateString) {
-                     let out = DateFormatter()
-                     out.dateFormat = "MMMM yyyy" // e.g., "September 2025"
-                     return out.string(from: date)
-                 }
-             }
-            return dateString // Fallback
+                let monthFormatter = DateFormatter()
+                monthFormatter.dateFormat = "yyyy-MM"
+                monthFormatter.locale = Locale(identifier: "en_US_POSIX")
+                if let date = monthFormatter.date(from: dateString) {
+                    let out = DateFormatter()
+                    out.dateFormat = "MMMM YYYY" // e.g., "September 2025"
+                    return out.string(from: date)
+                }
+            }
+            print("⚠️ [AccountView.formatDate] Could not parse dateString: \(dateString) with any known format.")
+            return dateString // Fallback if no format matches
         }
-            
         private func longStyle(_ date: Date) -> String {
             let out = DateFormatter(); out.dateStyle = .long; out.timeStyle = .none; return out.string(from: date)
         }
@@ -435,64 +465,97 @@
             print("✅ PayPal Payment Confirmed. Finalizing membership on backend.")
             
             guard let confirmationData = paymentDataFromPayPal,
-                  let confirmedPackageId = confirmationData.package_id_for_renewal
-                  // package_id_for_renewal is returned by PaypalController for both new and renew
-            else {
-                print("⚠️ Confirmation data from PayPal or package_id_for_renewal is missing.")
-                self.updateErrorMessage = "Could not finalize membership: Missing critical confirmation details."
+                  let onlinePaymentId = confirmationData.online_payment_db_id else {
+                print("⚠️ Confirmation data from PayPal (especially online_payment_db_id) is missing.")
+                self.updateErrorMessage = "Could not finalize membership: Missing critical payment confirmation details."
                 self.showErrorAlert = true
-                self.loadAllData() // Refresh to show latest state from server
-                self.paymentDataFromPayPal = nil // Reset
+                self.isProcessingMembershipAction = false
+                self.loadAllData()
+                self.paymentDataFromPayPal = nil
                 return
             }
 
-            let onlinePaymentId = confirmationData.online_payment_db_id // This is crucial for linking
+            let packageIdToUse: Int
+            let actionTypeString: String
 
             if self.currentActionIsRenewal {
-                print("ℹ️ Finalizing RENEWAL. Calling NetworkManager.renewMembership.")
-                NetworkManager.shared.renewMembership(packageId: confirmedPackageId, onlinePaymentId: onlinePaymentId) { result in
+                guard let confirmedPackageId = confirmationData.package_id_for_renewal else {
+                    print("⚠️ package_id_for_renewal is missing in confirmationData for RENEWAL.")
+                    self.updateErrorMessage = "Could not finalize membership renewal: Missing package confirmation."
+                    self.showErrorAlert = true
+                    self.isProcessingMembershipAction = false // Reset before returning
+                    self.loadAllData()
+                    self.paymentDataFromPayPal = nil
+                    return
+                }
+                packageIdToUse = confirmedPackageId
+                actionTypeString = "renewal"
+                print("ℹ️ Finalizing RENEWAL. Package ID from confirmation: \(packageIdToUse). OnlinePaymentID: \(onlinePaymentId)")
+                NetworkManager.shared.renewMembership(packageId: packageIdToUse, onlinePaymentId: onlinePaymentId) { result in
                     DispatchQueue.main.async {
-                        self.processMembershipUpdateResult(result, type: "renewal")
+                        // isProcessingMembershipAction is reset within processMembershipUpdateResult
+                        self.processMembershipUpdateResult(result, type: actionTypeString)
                     }
                 }
             } else { // This is a "new_member" action
-                print("ℹ️ Finalizing NEW membership. Calling NetworkManager.createMembership.")
-                NetworkManager.shared.createMembership(packageId: confirmedPackageId, onlinePaymentId: onlinePaymentId) { result in
+                guard selectedPackageIndex < membershipOptions.count else {
+                    print("⚠️ Invalid selectedPackageIndex or empty membershipOptions for NEW membership.")
+                    self.updateErrorMessage = "Could not finalize new membership: Package selection error."
+                    self.showErrorAlert = true
+                    self.isProcessingMembershipAction = false // Reset before returning
+                    self.loadAllData()
+                    self.paymentDataFromPayPal = nil
+                    return
+                }
+                packageIdToUse = membershipOptions[selectedPackageIndex].id
+                actionTypeString = "creation" // For the log message in processMembershipUpdateResult
+                print("ℹ️ Finalizing NEW membership. Package ID from local state: \(packageIdToUse). OnlinePaymentID: \(onlinePaymentId)")
+                NetworkManager.shared.createMembership(packageId: packageIdToUse, onlinePaymentId: onlinePaymentId) { result in
                     DispatchQueue.main.async {
-                        self.processMembershipUpdateResult(result, type: "creation")
+                        // isProcessingMembershipAction is reset within processMembershipUpdateResult
+                        self.processMembershipUpdateResult(result, type: actionTypeString)
                     }
                 }
             }
         }
+        
 
         private func processMembershipUpdateResult(_ result: Result<Membership, NetworkError>, type: String) {
+            self.isProcessingMembershipAction = false // Reset processing state here, for both success and failure paths of backend call
             switch result {
             case .success(let updatedMembership):
                 print("✅ Membership successfully \(type) on backend. New expiry: \(updatedMembership.exp_date)")
-                // Update local profile if needed, though loadAllData will also do this
-                if var p = self.profile, p.id == updatedMembership.user_id {
-                    p.membershipExpiryDate = updatedMembership.exp_date
-                    self.profile = p
-                    DatabaseManager.shared.saveUser(p)
-                    self.cachedExpiryRaw = updatedMembership.exp_date // also update @AppStorage
-                }
             case .failure(let err):
                 print("❌ Failed to \(type) membership on backend: \(err.localizedDescription)")
+                // handlePaymentManagerError will also set isProcessingMembershipAction = false if context contains "membership"
+                // but setting it here ensures it's always reset before the alert might show.
                 self.handlePaymentManagerError(err, context: "Membership \(type) finalization")
             }
-            self.loadAllData() // Crucial: Reload all data from server
-            self.paymentDataFromPayPal = nil // Reset state
-            // self.currentActionIsRenewal can be reset when the button is next pressed.
+            self.loadAllData()
+            self.paymentDataFromPayPal = nil
         }
         
             
         private func handlePaymentManagerError(_ error: Error, context: String = "operation") {
+            // Ensure isProcessingMembershipAction is reset if an error occurs during a membership action
+            // This is a fallback, primary reset should be in processMembershipUpdateResult or direct call sites.
+            if context.lowercased().contains("membership") && self.isProcessingMembershipAction {
+                 print("ℹ️ [handlePaymentManagerError] Resetting isProcessingMembershipAction due to error in: \(context)")
+                self.isProcessingMembershipAction = false
+            }
+            
             if let paymentErr = error as? PaymentError { // Assuming PaymentError is your custom enum
                 switch paymentErr {
                 case .serverError(let msg): updateErrorMessage = "Server Error (\(context)): \(msg)"
                 case .invalidResponse: updateErrorMessage = "Invalid Response (\(context))."
                 case .parseError(let msg): updateErrorMessage = "Parse Error (\(context)): \(msg)"
                 }
+            } else if let networkErr = error as? NetworkError {
+                 switch networkErr {
+                 case .serverError(let msg): updateErrorMessage = "Network Error (\(context)): \(msg)"
+                 case .invalidResponse: updateErrorMessage = "Invalid Network Response (\(context))."
+                 case .decodingError(let decErr): updateErrorMessage = "Data Error (\(context)): \(decErr.localizedDescription)"
+                 }
             } else {
                 updateErrorMessage = "Error during \(context): \(error.localizedDescription)"
             }
@@ -518,11 +581,16 @@
                     switch result {
                     case .success(let packs):
                         self.membershipOptions = packs
-                        if self.selectedPackageIndex >= packs.count && !packs.isEmpty { self.selectedPackageIndex = 0 }
-                        else if packs.isEmpty { self.selectedPackageIndex = 0 }
+                        if !packs.isEmpty {
+                            // Ensure selectedPackageIndex is valid, default to 0 if out of bounds or if current selection is no longer valid
+                            if self.selectedPackageIndex >= packs.count || self.selectedPackageIndex < 0 {
+                                 self.selectedPackageIndex = 0
+                            }
+                        } else {
+                            self.selectedPackageIndex = 0 // No options, so index must be 0
+                        }
                     case .failure(let err):
                         print("⚠️ Failed to load membership packages: \(err.localizedDescription)")
-                        // self.updateErrorMessage = "Could not load membership options."; self.showErrorAlert = true;
                     }
                 }
             }
@@ -531,9 +599,9 @@
         private func loadMembership() {
             guard let effectiveProfileID = self.profile?.id, effectiveProfileID != 0 else {
                 print("ℹ️ [AccountView.loadMembership] No valid user profile ID (current self.profile is nil or ID is 0), cannot fetch membership.")
-                self.cachedExpiryRaw = nil
-                self.membershipId = nil
-                if var p = self.profile { // Should not happen if guard above is effective, but defensive.
+                if self.cachedExpiryRaw != nil { self.cachedExpiryRaw = nil } // Clear if no valid profile to associate with
+                if self.membershipId != nil { self.membershipId = nil }
+                if var p = self.profile, p.membershipExpiryDate != nil { // Only update if there's a change
                     p.membershipExpiryDate = nil
                     self.profile = p
                     DatabaseManager.shared.saveUser(p)
@@ -693,6 +761,7 @@
                         .textFieldStyle(PlainTextFieldStyle()) // A simpler style for inline editing
                         .keyboardType(keyboardType)
                         .padding(.vertical, 4) // Give a little vertical space for tapping
+                        .frame(minHeight: 25)
                     Divider() // Visual separator for the text field in edit mode
                 } else {
                     Text(text.isEmpty && placeholder.isEmpty ? "—" : (text.isEmpty ? (placeholder.isEmpty ? "—" : placeholder) : text) ) // Show dash if text is empty and no placeholder

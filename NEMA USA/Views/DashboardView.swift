@@ -213,4 +213,4 @@ struct DashboardView: View {
         // and it's not already available via PersistenceController.shared within the repo.
         // .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
     }
-}
+} // end of file

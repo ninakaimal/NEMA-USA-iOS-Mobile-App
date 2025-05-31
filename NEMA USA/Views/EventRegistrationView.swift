@@ -150,12 +150,6 @@ struct EventRegistrationView: View {
             
             ScrollView {
                 VStack(spacing: 24) {
-                    // Title now in navigationTitle, so this can be removed or kept if styled differently
-                    // Text("\(event.title) Tickets")
-                    //     .font(.title2).bold()
-                    //     .padding(.horizontal)
-                    //     .padding(.top, 16)
-                    
                     infoCard
                     
                     if viewModel.isLoading {
@@ -166,10 +160,10 @@ struct EventRegistrationView: View {
                             .foregroundColor(.red)
                             .padding()
                     } else {
+                        ticketSelectionCard // Dynamic ticket types
                         if event.usesPanthi ?? false { // Check the flag from the Event model
                             panthiSelectionCard
                         }
-                        ticketSelectionCard // Dynamic ticket types
                     }
                     
                     termsCard
@@ -203,7 +197,7 @@ struct EventRegistrationView: View {
                         showLoginSheet = true
                     }
                     .padding(.top, 8)
-                    Text("You can also proceed as a guest with non-member prices.")
+                    Text("You can also proceed as a guest with non-member prices")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else if let user = DatabaseManager.shared.currentUser {
@@ -223,37 +217,47 @@ struct EventRegistrationView: View {
     // MARK: - Dynamic Panthi Selection Card (NEW or Replaces Placeholder)
     @ViewBuilder
     private var panthiSelectionCard: some View {
-        if !viewModel.availablePanthis.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Select Time Slot / Panthi")
-                    .font(.headline)
-                
-                Picker("Select Slot", selection: $viewModel.selectedPanthiId) {
-                    Text("Please select a slot").tag(nil as Int?) // For "no selection" state
-                    ForEach(viewModel.availablePanthis) { panthi in
-                        Text("\(panthi.name) (\(panthi.availableSlots) available)")
-                            .tag(panthi.id as Int?) // Ensure tag matches optional Int
-                            .disabled(panthi.availableSlots <= 0 && viewModel.selectedPanthiId != panthi.id)
+        // Check if the event is configured to use Panthis
+        if event.usesPanthi == true { // Explicitly check for true
+            if viewModel.isLoading && viewModel.availablePanthis.isEmpty { // Show loading if panthis are expected but not yet loaded
+                ProgressView("Loading time slots...")
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+                    .padding(.horizontal)
+            } else if !viewModel.availablePanthis.isEmpty { // Panthis are loaded
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Please select a Panthi / Time Slot")
+                        .font(.headline)
+                    
+                    Picker("Select Slot", selection: $viewModel.selectedPanthiId) {
+                        Text("Select Panthi").tag(nil as Int?) // Placeholder for no selection
+                        ForEach(viewModel.availablePanthis) { panthi in
+                            Text("\(panthi.name) (\(panthi.availableSlots > 0 ? "\(panthi.availableSlots) available" : "SOLD OUT"))")
+                                .tag(panthi.id as Int?)
+                                .disabled(panthi.availableSlots <= 0 && viewModel.selectedPanthiId != panthi.id)
+                        }
                     }
+                    .pickerStyle(MenuPickerStyle()) // Standard dropdown style
+                    .padding(.vertical, 5)
+                    .background(Color(.tertiarySystemBackground).opacity(0.7))
+                    .cornerRadius(8)
                 }
-                .pickerStyle(MenuPickerStyle())
-                .padding(.vertical, 5)
-                .background(Color(.tertiarySystemBackground).opacity(0.7))
-                .cornerRadius(8)
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-            .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
-            .padding(.horizontal)
-        } else if event.usesPanthi ?? false { // Event uses panthis, but none loaded/available
-            Text("No time slots are currently available for this event.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
                 .padding()
-                .frame(maxWidth: .infinity, alignment: .center)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
                 .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
                 .padding(.horizontal)
+            } else if !viewModel.isLoading && viewModel.errorMessage == nil { // Done loading, no error, but still no panthis
+                Text("No time slots are currently available for this event.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+                    .padding(.horizontal)
+            }
         }
     }
     
@@ -280,14 +284,19 @@ struct EventRegistrationView: View {
                                      .foregroundColor(.secondary)
                              }
                              Spacer()
-                             Stepper( // Standard Stepper restored from old code
-                                 "\(viewModel.ticketQuantities[ticketType.id] ?? 0)",
+                             Stepper(
                                  value: Binding(
                                      get: { viewModel.ticketQuantities[ticketType.id] ?? 0 },
                                      set: { newValue in viewModel.ticketQuantities[ticketType.id] = max(0, newValue) }
                                  ),
                                  in: 0...20 // Max quantity (adjust as needed)
-                             )
+                             ) {
+                                 // Custom Label View for the Stepper
+                                 Text("\(viewModel.ticketQuantities[ticketType.id] ?? 0)")
+                                     .font(.system(size: 18, weight: .medium)) // Made the count text bigger
+                                     .frame(minWidth: 25, alignment: .center)   // Give it a bit of space
+                             }
+                             .frame(width: 120) // Example width, adjust as necessary
                          }
                          if viewModel.availableTicketTypes.last?.id != ticketType.id {
                              Divider()
@@ -545,4 +554,4 @@ struct EventRegistrationView: View {
             let emailPred = NSPredicate(format:"SELF MATCHES %@", emailRegEx)
             return emailPred.evaluate(with: self)
         }
-    }
+    } // end of file

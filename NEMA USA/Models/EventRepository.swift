@@ -14,16 +14,16 @@ class EventRepository: ObservableObject {
     @Published var events: [Event] = []
     @Published var isLoading: Bool = false
     @Published var lastSyncErrorMessage: String?
-
+    
     private let networkManager = NetworkManager.shared
     private let viewContext: NSManagedObjectContext
-
+    
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.viewContext = context
     }
-
+    
     // --- NEW SYNC METHODS ---
-
+    
     @MainActor // Ensure Core Data operations and @Published updates are on the main thread
     func syncAllEvents(forceFullSync: Bool = false) async {
         guard !isLoading else {
@@ -35,18 +35,18 @@ class EventRepository: ObservableObject {
         
         let lastSyncTimestamp = forceFullSync ? nil : UserDefaults.standard.object(forKey: "lastSyncEvents") as? Date
         print("[EventRepository] Syncing all events. Last sync: \(lastSyncTimestamp?.description ?? "Never (forcing full sync: \(forceFullSync))")")
-
+        
         do {
-             let (fetchedEventsData, deletedEventIds) = try await networkManager.fetchEvents(since: lastSyncTimestamp)
-             print("[EventRepository] Fetched \(fetchedEventsData.count) events from API, \(deletedEventIds.count) to be processed as deleted.")
-
+            let (fetchedEventsData, deletedEventIds) = try await networkManager.fetchEvents(since: lastSyncTimestamp)
+            print("[EventRepository] Fetched \(fetchedEventsData.count) events from API, \(deletedEventIds.count) to be processed as deleted.")
+            
             if !fetchedEventsData.isEmpty {
                 let existingEventIDs = Set(fetchedEventsData.map { $0.id })
                 let fetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
                 fetchRequest.predicate = NSPredicate(format: "id IN %@", existingEventIDs)
                 let existingCDEventsArray = try viewContext.fetch(fetchRequest)
                 let existingCDEventsDict = Dictionary(uniqueKeysWithValues: existingCDEventsArray.map { ($0.id!, $0) })
-
+                
                 for eventData in fetchedEventsData { // <<<<<<<< CORRECTLY USES fetchedEventsData
                     let cdEvent = existingCDEventsDict[eventData.id] ?? CDEvent(context: viewContext)
                     // ... (mapping properties) ...
@@ -82,7 +82,7 @@ class EventRepository: ObservableObject {
                     print("⚠️ [EventRepository] Error fetching events to delete: \(error)")
                 }
             }
-
+            
             if viewContext.hasChanges {
                 try viewContext.save()
                 UserDefaults.standard.set(Date(), forKey: "lastSyncEvents")
@@ -91,7 +91,7 @@ class EventRepository: ObservableObject {
                 print("ℹ️ [EventRepository] No event changes to save after sync.")
             }
             await loadEventsFromCoreData() // fetchLimit: 10) // Keep this limit if needed to update the UI with a limited set
-
+            
         } catch let networkError as NetworkError { // Catch specific NetworkError
             lastSyncErrorMessage = "Network Error during event sync: \(networkError)"
             print("❌ [EventRepository] Network error syncing events: \(networkError)")
@@ -113,7 +113,7 @@ class EventRepository: ObservableObject {
         do {
             let fetchedTicketTypes = try await networkManager.fetchTicketTypes(forEventId: eventID)
             print("[EventRepository] Fetched \(fetchedTicketTypes.count) ticket types for event \(eventID).")
-
+            
             let parentEvent: CDEvent
             if let providedEventObject = eventCDObject {
                 parentEvent = providedEventObject
@@ -127,7 +127,7 @@ class EventRepository: ObservableObject {
                 }
                 parentEvent = fetchedParentEvent
             }
-
+            
             // Simple Upsert Logic for TicketTypes
             for ttData in fetchedTicketTypes {
                 let ttFetchRequest: NSFetchRequest<CDEventTicketType> = CDEventTicketType.fetchRequest()
@@ -152,7 +152,7 @@ class EventRepository: ObservableObject {
                 cdTicketType.lastUpdatedAt = ttData.lastUpdatedAt
                 cdTicketType.event = parentEvent
             }
-
+            
             if viewContext.hasChanges {
                 try viewContext.save()
                 print("✅ [EventRepository] Successfully synced ticket types for event ID: \(eventID)")
@@ -164,7 +164,7 @@ class EventRepository: ObservableObject {
         }
         isLoading = false
     }
-
+    
     // Method to sync panthis for a specific event
     @MainActor
     func syncPanthis(forEventID eventID: String, eventCDObject: CDEvent? = nil) async {
@@ -176,7 +176,7 @@ class EventRepository: ObservableObject {
         do {
             let fetchedPanthis = try await networkManager.fetchPanthis(forEventId: eventID)
             print("[EventRepository] Fetched \(fetchedPanthis.count) panthis for event \(eventID).")
-
+            
             let parentEvent: CDEvent
             if let providedEventObject = eventCDObject {
                 parentEvent = providedEventObject
@@ -196,7 +196,7 @@ class EventRepository: ObservableObject {
                 isLoading = false
                 return
             }
-
+            
             for panthiData in fetchedPanthis {
                 let panthiFetchRequest: NSFetchRequest<CDPanthi> = CDPanthi.fetchRequest()
                 panthiFetchRequest.predicate = NSPredicate(format: "id == %lld AND event == %@", Int64(panthiData.id), parentEvent)
@@ -208,7 +208,7 @@ class EventRepository: ObservableObject {
                     cdPanthi = CDPanthi(context: viewContext)
                     cdPanthi.id = Int64(panthiData.id)
                 }
-
+                
                 cdPanthi.name = panthiData.name
                 cdPanthi.panthiDescription = panthiData.description
                 cdPanthi.availableSlots = Int32(panthiData.availableSlots)
@@ -216,7 +216,7 @@ class EventRepository: ObservableObject {
                 cdPanthi.lastUpdatedAt = panthiData.lastUpdatedAt
                 cdPanthi.event = parentEvent
             }
-
+            
             if viewContext.hasChanges {
                 try viewContext.save()
                 print("✅ [EventRepository] Successfully synced panthis for event ID: \(eventID)")
@@ -228,7 +228,7 @@ class EventRepository: ObservableObject {
         }
         isLoading = false
     }
-
+    
     // --- Method to load events from Core Data and publish them ---
     @MainActor
     func loadEventsFromCoreData(fetchLimit: Int = 30) async { // Add a parameter with a default
@@ -264,20 +264,4 @@ class EventRepository: ObservableObject {
             lastSyncErrorMessage = "Failed to load local events."
         }
     }
-
-    // old loadEvents()
-//    func loadEvents() {
-//        guard let url = Bundle.main.url(forResource: "events", withExtension: "json") else {
-//            print("❌ events.json not found")
-//            return
-//        }
-//        do {
-//            let data = try Data(contentsOf: url)
-//            let decoder = JSONDecoder()
-//            decoder.dateDecodingStrategy = .iso8601
-//            events = try decoder.decode([Event].self, from: data)
-//        } catch {
-//            print("❌ Error decoding events: \(error)")
- //       }
-//    }
 }
