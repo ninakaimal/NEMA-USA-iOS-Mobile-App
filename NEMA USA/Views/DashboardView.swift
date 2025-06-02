@@ -133,6 +133,10 @@ struct DashboardView: View {
                                 }
                             }
                             .padding(.horizontal)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 0.8) // subtle border
+                            )
                         }
 
                         if !pastEvents.isEmpty {
@@ -148,6 +152,10 @@ struct DashboardView: View {
                                 }
                             }
                             .padding(.horizontal)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 0.8) // subtle border
+                            )
                         }
                         
                         // Display "No events found" if applicable

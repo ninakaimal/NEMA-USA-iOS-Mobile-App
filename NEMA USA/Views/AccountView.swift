@@ -17,7 +17,6 @@
         @State private var isEditingFamily  = false
         @State private var editName        = ""
         @State private var editPhone       = ""
-        // @State private var editDOB         = ""
         @State private var editAddress     = ""
         @State private var isUpdating      = false
         @State private var showErrorAlert  = false
@@ -39,6 +38,42 @@
         // State for membership button processing
         @State private var isProcessingMembershipAction: Bool = false
         
+        // Relation list
+        private let relationshipOptions = ["spouse", "son", "daughter"]
+        
+        // Date of Birth properties
+        @State private var editMonth = Calendar.current.component(.month, from: Date())
+        @State private var editYear = Calendar.current.component(.year, from: Date())
+        
+        // New state variable to track individual DOB editing
+        @State private var editingDOB: [Int: (month: Int, year: Int)] = [:]
+        
+        struct MonthYearPicker: View {
+            @Binding var selectedMonth: Int
+            @Binding var selectedYear: Int
+
+            let months = Calendar.current.monthSymbols
+            let years = Array((Calendar.current.component(.year, from: Date()) - 110)...Calendar.current.component(.year, from: Date())).reversed()
+
+            var body: some View {
+                HStack {
+                    Picker("Month", selection: $selectedMonth) {
+                        ForEach(0..<months.count, id: \.self) { idx in
+                            Text(months[idx]).tag(idx + 1)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+
+                    Picker("Year", selection: $selectedYear) {
+                        ForEach(years, id: \.self) { year in
+                            Text(String(format: "%d", year)).tag(year)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                }
+            }
+        }
+        
         private static let accountViewIsoDateTimeFormatter: ISO8601DateFormatter = {
             let formatter = ISO8601DateFormatter()
             // This configuration should be robust enough for typical full date-time strings
@@ -54,6 +89,14 @@
             formatter.dateFormat = "yyyy-MM-dd"
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(secondsFromGMT: 0) // Assuming UTC for date-only strings if not specified
+            return formatter
+        }()
+        
+        private static let yearMonthFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0) // Or your app's default
             return formatter
         }()
         
@@ -110,6 +153,15 @@
                            } else if selectedPackageIndex >= membershipOptions.count && !membershipOptions.isEmpty {
                                selectedPackageIndex = 0
                            }
+                if let firstDOB = family.first?.dob, !firstDOB.isEmpty {
+                    let components = firstDOB.split(separator: "-")
+                    if components.count == 2,
+                       let year = Int(components[0]),
+                       let month = Int(components[1]) {
+                        editYear = year
+                        editMonth = month
+                    }
+                }
             }
             .onChange(of: profile) { newProfileValue in
                 if let p = newProfileValue {
@@ -317,8 +369,12 @@
                 }
                 .padding()
                 .background(Color(.secondarySystemBackground)).cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 3)
                 .padding(.horizontal)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 0.4) // subtle border
+                )
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
         }
         private var familySection: some View {
@@ -353,30 +409,89 @@
                         ForEach($family) { $member in
                             VStack(alignment: .leading, spacing: 8) {
                                 EditableInfoRow(label: "Name", text: $member.name, isEditing: isEditingFamily)
-                                EditableInfoRow(label: "Relation", text: $member.relationship, isEditing: isEditingFamily)
-                                EditableInfoRow(label: "Email", text: Binding(
-                                    get: { member.email ?? "" }, set: { member.email = $0.isEmpty ? nil : $0 }
-                                ), isEditing: isEditingFamily, keyboardType: .emailAddress)
+                                // Relationship picker
+                                if isEditingFamily {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Relation:")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                        Picker("Relation", selection: $member.relationship) {
+                                            ForEach(relationshipOptions, id: \.self) { option in
+                                                Text(option.capitalized).tag(option)
+                                            }
+                                        }
+                                        .pickerStyle(MenuPickerStyle())
+                                        .padding(.vertical, 4)
+                                        .frame(minHeight: 25)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        Divider()
+                                    }
+                                } else {
+                                    // Revert to VStack for stacked display when not editing, to match Screenshot 2
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Relation:") // Label
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                        Text(member.relationship.capitalized) // Value
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary) // Or your desired color for values
+                                            .padding(.vertical, 4) // Match padding if EditableInfoRow has it
+                                    }
+                                    // Divider()
+                                }
                                 
-                                EditableInfoRow(
-                                    label: "DOB",
-                                    text: Binding(
-                                    get: { member.dob ?? "" },
-                                    set: { member.dob = $0.isEmpty ? nil : $0 }
-                                ),
-                                    isEditing: isEditingFamily,
-                                    placeholder: "YYYY-MM-DD"
-                                    )
-                                EditableInfoRow(label: "Phone", text: Binding(
-                                    get: { member.phone ?? "" }, set: { member.phone = $0.isEmpty ? nil : $0 }
-                                ), isEditing: isEditingFamily, keyboardType: .phonePad)
+                                // Phone field
+                                    EditableInfoRow(label: "Phone", text: Binding(
+                                        get: { member.phone ?? "" }, set: { member.phone = $0.isEmpty ? nil : $0 }
+                                    ), isEditing: isEditingFamily, keyboardType: .phonePad)
+                                
+                                    EditableInfoRow(label: "Email", text: Binding(
+                                        get: { member.email ?? "" }, set: { member.email = $0.isEmpty ? nil : $0 }
+                                    ), isEditing: isEditingFamily, keyboardType: .emailAddress)
+                                
+                                // DOB picker
+                                if isEditingFamily {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("DOB (Month & Year):*")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+
+                                        MonthYearPicker(
+                                            selectedMonth: Binding(
+                                                get: { editingDOB[member.id]?.month ?? currentMonth(from: member.dob) },
+                                                set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].month = $0 }
+                                            ),
+                                            selectedYear: Binding(
+                                                get: { editingDOB[member.id]?.year ?? currentYear(from: member.dob) },
+                                                set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].year = $0 }
+                                            )
+                                        )
+                                        .padding(.vertical, 1)
+                                        Divider()
+                                    }
+                                } else { // ✅ ADD THIS BLOCK
+                                    if let dob = member.dob, !dob.isEmpty {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("DOB:")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                            Text(formattedDOB(from: member.dob))
+                                                .font(.subheadline)
+                                                .padding(.vertical, 4)
+                                        }
+                                    }
+                                }
+                                
                             }
                             .padding() // Inner padding for content within the card
                             .frame(maxWidth: .infinity, alignment: .leading) // Make VStack take full width
                             .background(Color(.secondarySystemBackground)) // Apply background to full-width VStack
                             .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.05), radius: 3, y: 2)
-                            // Removed .padding(.horizontal) from individual cards
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.4) // subtle border
+                            )
+                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                         }
                     }
                     .padding(.horizontal) // Apply horizontal padding to the group of cards
@@ -416,6 +531,13 @@
         }
         
         private func saveFamily() {
+            for index in family.indices {
+                let member = family[index]
+                if let dobSelection = editingDOB[member.id] {
+                    family[index].dob = String(format: "%04d-%02d", dobSelection.year, dobSelection.month)
+                }
+            }
+            
             isUpdating = true
             NetworkManager.shared.updateFamily(family) { result in
                 DispatchQueue.main.async {
@@ -423,15 +545,46 @@
                     switch result {
                     case .success():
                         isEditingFamily = false
-                        DatabaseManager.shared.saveFamily(family) // Cache the locally edited version
-                        // Optionally call loadFamily() here to re-fetch from server and confirm.
-                    case .failure(let err): handlePaymentManagerError(err, context: "family update")
+                        DatabaseManager.shared.saveFamily(family)
+                        editingDOB = [:] // reset after saving
+                    case .failure(let err):
+                        handlePaymentManagerError(err, context: "family update")
                     }
                 }
             }
         }
             
-            // MARK: – Date formatting helpers
+            
+        // MARK: - Helper funcitons to parse current DOB
+        
+        private func formattedDOB(from dob: String?) -> String {
+            guard let dob = dob, !dob.isEmpty else { return "—" }
+            let components = dob.split(separator: "-")
+            guard components.count == 2,
+                  let year = Int(components[0]),
+                  let month = Int(components[1]),
+                  (1...12).contains(month) else {
+                return "—"
+            }
+            let monthName = Calendar.current.monthSymbols[month - 1]
+            return "\(monthName) \(year)"
+        }
+        
+        private func currentYear(from dob: String?) -> Int {
+            guard let dob = dob else { return Calendar.current.component(.year, from: Date()) }
+            return Int(dob.prefix(4)) ?? Calendar.current.component(.year, from: Date())
+        }
+
+        private func currentMonth(from dob: String?) -> Int {
+            guard let dob = dob else { return Calendar.current.component(.month, from: Date()) }
+            let components = dob.split(separator: "-")
+            if components.count > 1, let month = Int(components[1]) {
+                return month
+            }
+            return Calendar.current.component(.month, from: Date())
+        }
+        
+        // MARK: – Date formatting helpers
             
         private func formatDate(_ dateString: String) -> String {
             // Try full ISO8601 date-time first
@@ -448,9 +601,10 @@
                 monthFormatter.dateFormat = "yyyy-MM"
                 monthFormatter.locale = Locale(identifier: "en_US_POSIX")
                 if let date = monthFormatter.date(from: dateString) {
-                    let out = DateFormatter()
-                    out.dateFormat = "MMMM YYYY" // e.g., "September 2025"
-                    return out.string(from: date)
+                    let outputFormatter = DateFormatter()
+                    outputFormatter.dateFormat = "MMMM yyyy" // e.g., "September 2025"
+                    outputFormatter.locale = Locale(identifier: "en_US_POSIX")
+                    return outputFormatter.string(from: date)
                 }
             }
             print("⚠️ [AccountView.formatDate] Could not parse dateString: \(dateString) with any known format.")

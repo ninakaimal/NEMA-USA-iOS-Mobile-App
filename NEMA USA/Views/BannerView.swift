@@ -12,19 +12,20 @@ struct BannerView: View {
             Color.orange
                 .ignoresSafeArea(edges: .top)
             
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Image("LaunchLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 44, height: 44)
+                    .frame(width: 50, height: 50)
                 
                 Text("Welcome to NEMA USA!")
-                    .font(.title2).bold()
+                    .font(.system(size: 23, weight: .bold))
                     .foregroundColor(.white)
-                
+                    .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .padding(.horizontal)
         }
         .frame(height: 56)
     }

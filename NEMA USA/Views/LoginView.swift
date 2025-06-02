@@ -46,10 +46,12 @@ struct LoginView: View {
                     .opacity(logoOpacity)
                     .padding(.top, logoTopPadding)
                     .onAppear {
-                        withAnimation(.easeOut(duration: 1.0)) {
-                            logoScale      = 1.0
-                            logoTopPadding = 40
-                            logoOpacity    = 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation(.easeOut(duration: 0.7)) {
+                                logoScale      = 1.0
+                                logoTopPadding = 40
+                                logoOpacity    = 1.0
+                            }
                         }
                     }
                 
@@ -66,12 +68,9 @@ struct LoginView: View {
                     .padding(.bottom, 40)
                 
                 // MARK: Email Field
-                TextField("", text: $email)
-                    .placeholder(when: email.isEmpty) {
-                        Text("Email")
-                            .foregroundColor(.orange.opacity(0.5))
+                TextField("Email", text: $email)
+                    .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
                             .padding(.leading, 6)
-                    }
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
@@ -82,12 +81,10 @@ struct LoginView: View {
                     .padding(.horizontal)
                 
                 // MARK: Password Field
-                SecureField("", text: $password)
-                    .placeholder(when: password.isEmpty) {
-                        Text("Password")
-                            .foregroundColor(.orange.opacity(0.5))
+                
+            SecureField("Password", text: $password)
+                .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
                             .padding(.leading, 6)
-                    }
                     .disableAutocorrection(true)
                     .autocapitalization(.none)
                     .padding(12)
