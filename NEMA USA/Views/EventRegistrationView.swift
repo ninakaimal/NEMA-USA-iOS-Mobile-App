@@ -201,7 +201,7 @@ struct EventRegistrationView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else if let user = DatabaseManager.shared.currentUser {
-                     Text(user.isMember ? "Member prices are automatically applied" : "Not a NEMA member, non-member prices apply")
+                     Text(user.isMember ? "Member prices are automatically applied" : "Not a NEMA member, non-member prices apply. Tap the Account icon below for membership options.")
                         .font(.caption)
                         .foregroundColor(user.isMember ? .green : .orange)
                         .padding(.top, 5)

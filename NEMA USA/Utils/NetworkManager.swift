@@ -634,6 +634,9 @@ final class NetworkManager: NSObject {
         .resume()
     }
     
+    
+    
+    
     // MARK: – JSON-based methods
     
     // 1) Public list of packages
@@ -878,6 +881,81 @@ final class NetworkManager: NSObject {
         }
     }
     
+
+    /// Adds a new family member using a form-POST to the /fmly_mmbr endpoint.
+    func addNewFamilyMember(
+        name: String,
+        relationship: String,
+        email: String?,
+        dob: String?, // Expected format "YYYY-MM"
+        phone: String?,
+        completion: @escaping (Result<Void, NetworkError>) -> Void
+    ) {
+        fetchCSRFToken { result in
+            switch result {
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("CSRF token fetch failed for add member: \(error.localizedDescription)")))
+                }
+            case .success(let token):
+                let addURL = self.baseURL.appendingPathComponent("fmly_mmbr") // Same URL as updateFamily
+                var req = URLRequest(url: addURL)
+                req.httpMethod = "POST"
+                req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+                req.setValue("\(self.baseURL)/fmly_mmbr", forHTTPHeaderField: "Referer") // Consistent referer
+
+                var params: [String: String] = [
+                    "_token":       token,
+                    "fname":        name,
+                    "relationship": relationship
+                ]
+                // Add optional fields only if they have values
+                if let email = email, !email.isEmpty { params["email"] = email }
+                if let phone = phone, !phone.isEmpty { params["phone"] = phone }
+                if let dob = dob, !dob.isEmpty { params["dob"] = dob }
+                // IMPORTANT: DO NOT send an "id" parameter for new members,
+                // as per UserController.php's addListFamilyMember logic and HAR analysis.
+
+                req.httpBody = params
+                    .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
+                    .joined(separator: "&")
+                    .data(using: .utf8)
+
+                print("🚀 [NetworkManager] Adding new family member: \(name) to URL: \(addURL.absoluteString) with params: \(params)")
+
+                self.session.dataTask(with: req) { data, resp, err in
+                    if let e = err {
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError("Add new member request failed: \(e.localizedDescription)")))
+                        }
+                        return
+                    }
+                    guard let http = resp as? HTTPURLResponse else {
+                        DispatchQueue.main.async {
+                            completion(.failure(.invalidResponse))
+                        }
+                        return
+                    }
+
+                    // Successful form POSTs for add/update usually result in a redirect (302)
+                    // or a 200 if the page is re-rendered with messages.
+                    if (200..<400).contains(http.statusCode) {
+                        print("✅ [NetworkManager] Add new member request processed by backend (Status: \(http.statusCode)).")
+                        DispatchQueue.main.async {
+                            completion(.success(()))
+                        }
+                    } else {
+                        let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                        print("⚠️ Add New Family Member Error, status: \(http.statusCode), body: \(responseBody)")
+                        DispatchQueue.main.async {
+                            completion(.failure(.serverError("Add new member failed on server with status \(http.statusCode).")))
+                        }
+                    }
+                }.resume()
+            }
+        }
+    }
+
     /// POST `/fmly_mmbr` form-URL-encoded (one request per member)
     func updateFamily(
         _ members: [FamilyMember],
@@ -931,6 +1009,74 @@ final class NetworkManager: NSObject {
                 }
             }
         }
+    }
+    
+    /// Deletes a family member using a form-POST, consistent with fmly_mmbr interactions.
+    func deleteFamilyMember(
+        memberId: Int,
+        completion: @escaping (Result<Void, NetworkError>) -> Void
+    ) {
+        // For GET requests, CSRF tokens are generally not used or checked by Laravel by default.
+        // Parameters will be part of the URL.
+        
+        var urlComponents = URLComponents(url: self.baseURL.appendingPathComponent("family/delete"), resolvingAgainstBaseURL: false)!
+        urlComponents.queryItems = [
+            URLQueryItem(name: "id", value: String(memberId)) // Send 'id' as a query parameter
+        ]
+
+        guard let deleteURL = urlComponents.url else {
+            DispatchQueue.main.async {
+                completion(.failure(.serverError("Could not construct delete URL for GET request.")))
+            }
+            return
+        }
+
+        var req = URLRequest(url: deleteURL)
+        req.httpMethod = "GET" // Changed from POST to GET
+
+        // Headers for POST (like Content-Type for form-urlencoded) are not needed for GET.
+        // The Referer header might still be useful for some web servers/analytics, so it can be kept if desired,
+        // but it's not strictly necessary for the GET request itself to function.
+        // req.setValue("\(self.baseURL)/fmly_mmbr", forHTTPHeaderField: "Referer") // Optional: keep if needed
+
+        print("🚀 [NetworkManager] Deleting family member ID (GET): \(memberId) from URL: \(deleteURL.absoluteString)")
+
+        // Use self.session, which handles cookies (important for web routes)
+        self.session.dataTask(with: req) { data, resp, err in
+            if let e = err {
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("Delete request (GET) failed: \(e.localizedDescription)")))
+                }
+                return
+            }
+            guard let http = resp as? HTTPURLResponse else {
+                DispatchQueue.main.async {
+                    completion(.failure(.invalidResponse))
+                }
+                return
+            }
+
+            // A successful GET to a web route that performs an action and then redirects
+            // (like your PHP's `return redirect()->route('fmly_mmbr');`)
+            // will typically result in a 302 (redirect) status from the initial GET request if successful,
+            // or a 200 if the server processes the delete and then re-renders the destination page directly
+            // in the response to this GET.
+            // The URLSession will automatically follow the 302 redirect by default and the final status (e.g. 200 for the fmly_mmbr page)
+            // will be what 'http.statusCode' reflects here, unless redirect handling is customized.
+            // We'll consider 200-399 as success because the redirect itself implies the action was likely processed.
+            if (200..<400).contains(http.statusCode) {
+                DispatchQueue.main.async {
+                    print("✅ [NetworkManager] Delete request (GET) for family member ID: \(memberId) processed. Final status: \(http.statusCode).")
+                    completion(.success(()))
+                }
+            } else {
+                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                print("⚠️ Delete Family Member via GET Error, status: \(http.statusCode), body: \(responseBody)")
+                DispatchQueue.main.async {
+                    completion(.failure(.serverError("Delete failed on server (GET) with status \(http.statusCode).")))
+                }
+            }
+        }.resume()
     }
     
     private var eventsApiBaseURL: URL { // Helper to construct the correct base for these new v1 APIs
