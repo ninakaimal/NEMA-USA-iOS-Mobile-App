@@ -61,6 +61,16 @@ struct EventRegistrationView: View {
         UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = UIColor(Color.orange) // For UIAlertController button color
     }
     
+    
+    private var isUserLoggedInAndHasActiveMembership: Bool {
+        guard DatabaseManager.shared.jwtApiToken != nil, // User is logged in
+              let currentUser = DatabaseManager.shared.currentUser else {
+            return false // Not logged in or no user profile available
+        }
+        // UserProfile.isMember already checks for a valid, non-expired membership date
+        return currentUser.isMember
+    }
+    
     var body: some View {
         content
             .navigationTitle("\(event.title) Tickets") // Set title here
@@ -262,54 +272,97 @@ struct EventRegistrationView: View {
     }
     
     // MARK: - Dynamic Ticket Selection Card
+
+    // New struct for displaying and interacting with a single ticket type
+    private struct TicketTypeRowView: View {
+        let ticketType: EventTicketType
+        @Binding var quantity: Int
+        let price: Double // Pass the calculated price
+        let isDisabled: Bool // Pass whether this row should be disabled
+
+        var body: some View {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(ticketType.typeName):")
+                        .font(.headline)
+                        .opacity(isDisabled ? 0.6 : 1.0) // Visually dim text if disabled
+
+                    Text("$\(String(format: "%.2f", price)) each")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .opacity(isDisabled ? 0.6 : 1.0)
+
+                    // Informative text if a member ticket is disabled
+                    if isDisabled && (ticketType.isTicketTypeMemberExclusive ?? false) {
+                        Text("(Member Pricing - Login or Renew Membership)")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                }
+                Spacer()
+                Stepper(
+                    value: $quantity, // Use the direct binding passed from parent
+                    in: 0...20       // Using a fixed range (e.g., 0 to 20)
+                ) {
+                    Text("\(quantity)")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(minWidth: 25, alignment: .center)
+                }
+                .frame(width: 120) // Adjust width as needed
+                .disabled(isDisabled) // Disable the stepper based on passed-in state
+                .opacity(isDisabled ? 0.5 : 1.0) // Further visual cue for disabled stepper
+            }
+        }
+    }
+
+    // Now use the struct above to populate ticket selection card
     private var ticketSelectionCard: some View {
-         VStack(alignment: .leading, spacing: 16) {
-             if viewModel.availableTicketTypes.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
-                 Text("Ticket information will be available soon.")
-                     .font(.subheadline)
-                     .foregroundColor(.secondary)
-                     .padding(.vertical, 20)
-             } else {
-                 ForEach(viewModel.availableTicketTypes) { ticketType in
-                     let isUserActuallyMember = DatabaseManager.shared.currentUser?.isMember ?? false
-                     if ticketType.isTicketTypeMemberExclusive == true && !isUserActuallyMember {
-                         // Skip rendering this ticket type for non-members if it's exclusive
-                     } else {
-                         HStack {
-                             VStack(alignment: .leading, spacing: 2) {
-                                 Text("\(ticketType.typeName):") // Restored colon from old code
-                                     .font(.headline)
-                                 Text("$\(String(format: "%.2f", viewModel.price(for: ticketType))) each")
-                                     .font(.caption)
-                                     .foregroundColor(.secondary)
-                             }
-                             Spacer()
-                             Stepper(
-                                 value: Binding(
-                                     get: { viewModel.ticketQuantities[ticketType.id] ?? 0 },
-                                     set: { newValue in viewModel.ticketQuantities[ticketType.id] = max(0, newValue) }
-                                 ),
-                                 in: 0...20 // Max quantity (adjust as needed)
-                             ) {
-                                 // Custom Label View for the Stepper
-                                 Text("\(viewModel.ticketQuantities[ticketType.id] ?? 0)")
-                                     .font(.system(size: 18, weight: .medium)) // Made the count text bigger
-                                     .frame(minWidth: 25, alignment: .center)   // Give it a bit of space
-                             }
-                             .frame(width: 120) // Example width, adjust as necessary
-                         }
-                         if viewModel.availableTicketTypes.last?.id != ticketType.id {
-                             Divider()
-                         }
-                     }
-                 }
-             }
-         }
-         .padding()
-         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-         .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
-         .padding(.horizontal)
-     }
+        VStack(alignment: .leading, spacing: 16) {
+            if viewModel.availableTicketTypes.isEmpty && !viewModel.isLoading && viewModel.errorMessage == nil {
+                Text("Ticket information will be available soon.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 20)
+            } else {
+                // Using explicit id: \.id, as EventTicketType is Identifiable
+                ForEach(viewModel.availableTicketTypes, id: \.id) { ticketType in
+                    
+                    // Calculate disabled state clearly before passing to the row view
+                    let isMemberExclusiveForThisType = ticketType.isTicketTypeMemberExclusive ?? false
+                    let isActiveMember = self.isUserLoggedInAndHasActiveMembership // Uses UserProfile.isMember
+                    let shouldDisableThisRowStepper = isMemberExclusiveForThisType && !isActiveMember
+                    
+                    // Create a binding to the specific quantity for this ticket type
+                    let quantityBinding = Binding(
+                        get: { viewModel.ticketQuantities[ticketType.id] ?? 0 },
+                        set: { newValue in
+                            // The TicketTypeRowView's Stepper will be disabled,
+                            // but this check in the binding's setter is an extra safeguard.
+                            if !shouldDisableThisRowStepper {
+                               viewModel.ticketQuantities[ticketType.id] = max(0, newValue)
+                            }
+                        }
+                    )
+                    
+                    TicketTypeRowView(
+                        ticketType: ticketType,
+                        quantity: quantityBinding, // Pass the specific binding
+                        price: viewModel.price(for: ticketType), // Calculate price once
+                        isDisabled: shouldDisableThisRowStepper  // Pass the calculated disabled state
+                    )
+                    
+                    // Add a divider unless it's the last item in the list
+                    if viewModel.availableTicketTypes.last?.id != ticketType.id {
+                        Divider()
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+        .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+        .padding(.horizontal)
+    }
     
     private var termsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
