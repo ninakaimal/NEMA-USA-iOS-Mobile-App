@@ -16,37 +16,42 @@ struct NEMA_USAApp: App {
 
     init() {
         configureNavigationBarAppearance()
-        configureKingfisherForTest()
+        configureKingfisher()
     }
     
-    func configureKingfisherForTest() {
-        // You no longer need to create an instance of InsecureTrustDelegate for this.
-        // let sessionDelegate = InsecureTrustDelegate()
+    func configureKingfisher() {
+        // Create cache configuration
+        let cache = ImageCache.default
+        cache.memoryStorage.config.expiration = .seconds(300) // Memory cache expiration
+        cache.diskStorage.config.expiration = .days(7) // Disk cache expiration
+        cache.diskStorage.config.sizeLimit = 500 * 1024 * 1024 // 500 MB disk cache limit
         
-        // You also don't need to create a separate URLSessionConfiguration for this specific purpose,
-        // as Kingfisher's ImageDownloader will manage its own.
-        // let configuration = URLSessionConfiguration.default
-
-        // 1. Create your ImageDownloader instance.
-        let downloader = ImageDownloader(name: "customInsecureDownloader")
-
-        // 2. Configure the trustedHosts property. ✅
-        downloader.trustedHosts = ["test.nemausa.org"]
-
-        // 3. Set this downloader as the default for Kingfisher.
-        KingfisherManager.shared.downloader = downloader
+        // Configure the default downloader
+        let downloader = ImageDownloader.default
+        downloader.downloadTimeout = 15.0 // 15 second timeout
         
-        print("⚠️ Kingfisher configured with 'test.nemausa.org' in trustedHosts (DEVELOPMENT ONLY).")
+        // Configure Kingfisher globally
+        KingfisherManager.shared.defaultOptions = [
+            .scaleFactor(UIScreen.main.scale),
+            .transition(.fade(0.2)),
+            .cacheOriginalImage,
+            .backgroundDecode,
+            .alsoPrefetchToMemory
+        ]
+        
+        // Configure trusted hosts for test environment
+        if let customDownloader = KingfisherManager.shared.downloader as? ImageDownloader {
+            customDownloader.trustedHosts = ["test.nemausa.org"]
+        }
+        
+        print("✅ Kingfisher configured with optimized caching settings")
     }
 
-
-    
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // ← force a fresh login on every cold start
                 .onAppear {
-                authToken = nil
+                    authToken = nil
                 }
                 .onOpenURL { url in
                     handleUniversalLink(url: url)
