@@ -396,13 +396,15 @@ struct EventRegistrationView: View {
     }
     
     private var purchaseButton: some View {
-        let canProceed = viewModel.canProceedToPurchase(
-            acceptedTerms: acceptedTerms,
-            eventUsesPanthi: event.usesPanthi ?? false,
-            availablePanthisNonEmpty: !memberNameText.isEmpty && !emailAddressText.isEmpty && !phoneText.isEmpty && emailAddressText.isValidEmail
-        )
-        return Button(action: {
-            validateAndShowPurchaseConfirmation()
+        if event.isTktON ?? false {
+            let canProceed = viewModel.canProceedToPurchase(
+                acceptedTerms: acceptedTerms,
+                eventUsesPanthi: event.usesPanthi ?? false,
+                availablePanthisNonEmpty: !memberNameText.isEmpty && !emailAddressText.isEmpty && !phoneText.isEmpty && emailAddressText.isValidEmail
+            )
+        return AnyView(
+            Button(action: {
+                validateAndShowPurchaseConfirmation()
         }) {
             // The content of the button changes based on 'isProcessingPayment'
             if isProcessingPayment {
@@ -423,7 +425,22 @@ struct EventRegistrationView: View {
         .foregroundColor(.white)
         .cornerRadius(10)
         .padding(.horizontal)
+    )
+    }   else {
+        // --- If Registration is OFF, show a disabled "Tickets Closed" button ---
+        return AnyView(
+            Text("Tickets Closed")
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.gray) // Use a distinct disabled color
+                .cornerRadius(10)
+                .padding(.horizontal)
+        )
     }
+}
     
     private func loadMemberInfo() {
         if let user = DatabaseManager.shared.currentUser { //

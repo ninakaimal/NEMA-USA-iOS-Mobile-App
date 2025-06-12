@@ -46,6 +46,8 @@ struct EventCard: View {
             Text(event.title)
                 .font(.headline)
                 .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             // Date
             if let date = event.date {
@@ -58,28 +60,24 @@ struct EventCard: View {
                     .foregroundColor(.secondary)
             }
 
-            // Location
-            Button(action: {
-                // Assuming event.location is non-optional as per Event.swift
-                MapAppLauncher.presentMapOptions(for: event.location ?? "To be Announced")
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .foregroundColor(.secondary)
-                    Text(event.location ?? "To be Announced")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+            // --- Updated Location ---
+            // The Button has been replaced with a non-interactive HStack
+            // to prevent the map picker from appearing on this view.
+            HStack(spacing: 4) {
+                Image(systemName: "mappin.and.ellipse")
+                    .foregroundColor(.secondary)
+                Text(event.location ?? "To be Announced")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .buttonStyle(PlainButtonStyle())
 
-            // Description
-            Text(event.description ?? "")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
+            // Description - Removed description from the Event card
+//            Text(event.description?.stripHTML() ?? "")
+//                .font(.body)
+//                .foregroundColor(.secondary)
+//                .lineLimit(2)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
@@ -87,3 +85,10 @@ struct EventCard: View {
         .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
     }
 } // end of file
+
+extension String {
+    // Strips HTML tags to provide a clean plain text summary
+    func stripHTML() -> String {
+        return self.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
+    }
+}

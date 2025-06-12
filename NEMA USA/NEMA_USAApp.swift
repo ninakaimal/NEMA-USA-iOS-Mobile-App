@@ -41,7 +41,7 @@ struct NEMA_USAApp: App {
         
         // Configure trusted hosts for test environment
         if let customDownloader = KingfisherManager.shared.downloader as? ImageDownloader {
-            customDownloader.trustedHosts = ["test.nemausa.org"]
+            customDownloader.trustedHosts = ["nemausa.org"]
         }
         
         print("✅ Kingfisher configured with optimized caching settings")
@@ -63,7 +63,7 @@ struct NEMA_USAApp: App {
     }
 
     private func handleUniversalLink(url: URL) {
-        guard url.host == "test.nemausa.org",
+        guard url.host == "nemausa.org",
               url.path.starts(with: "/user/reset_password"),
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {

@@ -3,7 +3,7 @@
 //  NEMA USA
 //  Created by Nina on 4/12/25.
 //  Updated by Sajith on 4/24/25
-//  Updated by Arjun on 5/05/25 switch to test.nemausa.org
+//  Updated by Arjun on 5/05/25 switch to nemausa.org
 //
 
 import SwiftUI

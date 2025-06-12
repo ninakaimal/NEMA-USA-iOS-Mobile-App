@@ -44,14 +44,14 @@ private struct RefreshResponse: Decodable {
     let refreshToken: String
 }
 
-/// A delegate to unconditionally trust the test.nemausa.org cert
+/// A delegate to unconditionally trust the nemausa.org cert
 public class InsecureTrustDelegate: NSObject, URLSessionDelegate {
     public func urlSession(_ session: URLSession,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
     {
         let host = challenge.protectionSpace.host
-        if host == "test.nemausa.org",
+        if host == "nemausa.org",
            let trust = challenge.protectionSpace.serverTrust
         {
             completionHandler(.useCredential, URLCredential(trust: trust))
@@ -220,7 +220,7 @@ final class NetworkManager: NSObject {
     }()
     
     /// Your front-end root
-    private let baseURL = URL(string: "https://test.nemausa.org")!
+    private let baseURL = URL(string: "https://nemausa.org")!
     
     
     // MARK: – Helpers
@@ -235,7 +235,7 @@ final class NetworkManager: NSObject {
                     completion(.failure(.serverError("CSRF token error: \(error.localizedDescription)")))
                 }
             case .success(let csrfToken):
-                let endpoint = URL(string: "https://test.nemausa.org/user/reset/password")!
+                let endpoint = URL(string: "https://nemausa.org/user/reset/password")!
                 var req = URLRequest(url: endpoint)
                 req.httpMethod = "POST"
                 req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -299,7 +299,7 @@ final class NetworkManager: NSObject {
                     completion(.failure(.serverError("CSRF token error: \(error.localizedDescription)")))
                 }
             case .success(let csrfToken):
-                let endpoint = URL(string: "https://test.nemausa.org/user/reset_password")!
+                let endpoint = URL(string: "https://nemausa.org/user/reset_password")!
                 var req = URLRequest(url: endpoint)
                 req.httpMethod = "POST"
                 req.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -1081,8 +1081,8 @@ final class NetworkManager: NSObject {
     
     private var eventsApiBaseURL: URL { // Helper to construct the correct base for these new v1 APIs
         // Assuming your Dingo API routes are prefixed with /api
-        // If your baseURL is "https://test.nemausa.org", and Dingo routes are under "/api",
-        // then this should correctly point to "https://test.nemausa.org/api/"
+        // If your baseURL is "https://nemausa.org", and Dingo routes are under "/api",
+        // then this should correctly point to "https://nemausa.org/api/"
         // The Dingo router in your api.php seems to handle the /v1 prefix automatically based on versioning.
         return baseURL.appendingPathComponent("v1/mobile/") // Path to your new mobile API folder/routes
     }
@@ -1537,7 +1537,7 @@ extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
     {
         let host = challenge.protectionSpace.host
-        if host == "test.nemausa.org",
+        if host == "nemausa.org",
            let trust = challenge.protectionSpace.serverTrust
         {
             completionHandler(.useCredential, URLCredential(trust: trust))

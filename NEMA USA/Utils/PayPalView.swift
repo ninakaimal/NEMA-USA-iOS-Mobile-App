@@ -61,7 +61,7 @@ struct PayPalView: UIViewRepresentable {
             }
             print("🔍 WebView navigating to URL:", url.absoluteString)
             
-            if url.host?.contains("test.nemausa.org") == true,
+            if url.host?.contains("nemausa.org") == true,
                let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                let payerId = comps.queryItems?.first(where: { $0.name == "PayerID" })?.value {
@@ -89,7 +89,7 @@ struct PayPalView: UIViewRepresentable {
                          completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
 
                 if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-                   challenge.protectionSpace.host.contains("test.nemausa.org"),
+                   challenge.protectionSpace.host.contains("nemausa.org"),
                    let serverTrust = challenge.protectionSpace.serverTrust {
                     print("⚠️ Bypassing SSL for domain:", challenge.protectionSpace.host)
                     completionHandler(.useCredential, URLCredential(trust: serverTrust))
@@ -126,7 +126,7 @@ struct PayPalView: UIViewRepresentable {
             }
 
             // Build final URL for v1/payment_status_mobile
-            var components = URLComponents(string: "https://test.nemausa.org/v1/payment_status_mobile")!
+            var components = URLComponents(string: "https://nemausa.org/v1/payment_status_mobile")!
             // Important: Ensure queryItems from callbackURL are preserved and PayerID/paymentId are added/overridden
             components.queryItems = queryItemsDict.map { URLQueryItem(name: $0.key, value: $0.value) }
 
@@ -285,7 +285,7 @@ struct PayPalView: UIViewRepresentable {
                         completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
 
             guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-                  challenge.protectionSpace.host == "test.nemausa.org",
+                  challenge.protectionSpace.host == "nemausa.org",
                   let trust = challenge.protectionSpace.serverTrust else {
                 completionHandler(.performDefaultHandling, nil)
                 return

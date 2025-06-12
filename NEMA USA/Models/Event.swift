@@ -17,7 +17,9 @@ struct Event: Identifiable, Decodable, Hashable {
     let eventCatId: Int?
     let imageUrl: String?
     let isRegON: Bool?
+    let isTktON: Bool?
     let date: Date?
+    let timeString: String? 
     let eventLink: String?
     let usesPanthi: Bool?
     let lastUpdatedAt: Date?
@@ -28,7 +30,9 @@ struct Event: Identifiable, Decodable, Hashable {
         case eventCatId = "event_cat_id"
         case imageUrl = "image_url"
         case isRegON = "is_reg_on"
+        case isTktON = "is_tkt_on"
         case date // Assuming JSON key is "date"
+        case timeString = "time_string"
         case eventLink = "event_link"
         case usesPanthi = "uses_panthi"
         case lastUpdatedAt = "last_updated_at"
@@ -47,7 +51,8 @@ struct Event: Identifiable, Decodable, Hashable {
         eventLink = try container.decodeIfPresent(String.self, forKey: .eventLink)
 
         // Explicitly use the decoder's date strategy (from NetworkManager)
-        date = try container.decodeIfPresent(Date.self, forKey: .date)
+        self.date = try container.decodeIfPresent(Date.self, forKey: .date)
+        self.timeString = try container.decodeIfPresent(String.self, forKey: .timeString)
         lastUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .lastUpdatedAt)
 
         // Robust boolean decoding for isRegON
@@ -63,6 +68,20 @@ struct Event: Identifiable, Decodable, Hashable {
             }
         } else {
             self.isRegON = nil // Or default to false
+        }
+        
+        if container.contains(.isTktON) {
+            if let boolValue = try? container.decode(Bool.self, forKey: .isTktON) {
+                self.isTktON = boolValue
+            } else if let intValue = try? container.decode(Int.self, forKey: .isTktON) {
+                self.isTktON = (intValue == 1)
+            } else if let stringValue = try? container.decode(String.self, forKey: .isTktON) {
+                self.isTktON = (stringValue.lowercased() == "true" || stringValue == "1")
+            } else {
+                self.isTktON = nil
+            }
+        } else {
+            self.isTktON = nil
         }
 
         // Robust boolean decoding for usesPanthi
@@ -89,7 +108,7 @@ struct Event: Identifiable, Decodable, Hashable {
 
     // Memberwise initializer (keep for manual creation / CoreData mapping)
     init(id: String, title: String, description: String?, location: String?,
-         categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, date: Date?, eventLink: String?,
+         categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, date: Date?, timeString: String?, eventLink: String?,
          usesPanthi: Bool?, lastUpdatedAt: Date?) {
         self.id = id
         self.title = title
@@ -99,7 +118,9 @@ struct Event: Identifiable, Decodable, Hashable {
         self.eventCatId = eventCatId
         self.imageUrl = imageUrl
         self.isRegON = isRegON
+        self.isTktON = isTktON
         self.date = date
+        self.timeString = timeString
         self.eventLink = eventLink
         self.usesPanthi = usesPanthi
         self.lastUpdatedAt = lastUpdatedAt

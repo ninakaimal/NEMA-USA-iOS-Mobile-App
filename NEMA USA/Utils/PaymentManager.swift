@@ -34,7 +34,7 @@ final class PaymentManager: NSObject {
     private var appSpecificTicketPurchaseId: Int? // Your DB's ticket_purchase.id if returned by createOrder
 
     
-    private let baseURL = URL(string: "https://test.nemausa.org")!
+    private let baseURL = URL(string: "https://nemausa.org")!
     
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -60,8 +60,8 @@ final class PaymentManager: NSObject {
         initialRequest.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         initialRequest.setValue("en-US,en;q=0.5", forHTTPHeaderField: "Accept-Language")
         initialRequest.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        initialRequest.setValue("test.nemausa.org", forHTTPHeaderField: "Host")
-        initialRequest.setValue("https://test.nemausa.org", forHTTPHeaderField: "Referer")
+        initialRequest.setValue("nemausa.org", forHTTPHeaderField: "Host")
+        initialRequest.setValue("https://nemausa.org", forHTTPHeaderField: "Referer")
         initialRequest.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         
         session.dataTask(with: initialRequest) { data, response, error in
@@ -145,7 +145,7 @@ final class PaymentManager: NSObject {
                 "amount": amount,
                 "item": "\(eventTitle) Purchase", // General item name
                 "description": "\(eventTitle) - \(name ?? "Guest")", // More specific description
-                "returnUrl": "https://test.nemausa.org/payment_status", // This is PayPal's, backend handles mobile redirect
+                "returnUrl": "https://nemausa.org/payment_status", // This is PayPal's, backend handles mobile redirect
                 "type": paymentTypeDetermined,
                 "name": name ?? "",
                 "email": email ?? "",
@@ -334,7 +334,7 @@ final class PaymentManager: NSObject {
     }
 extension PaymentManager: URLSessionDelegate, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        if challenge.protectionSpace.host == "test.nemausa.org", let trust = challenge.protectionSpace.serverTrust {
+        if challenge.protectionSpace.host == "nemausa.org", let trust = challenge.protectionSpace.serverTrust {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
             completionHandler(.performDefaultHandling, nil)

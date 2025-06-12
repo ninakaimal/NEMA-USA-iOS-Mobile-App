@@ -9,8 +9,10 @@
         <attribute name="id" attributeType="String"/>
         <attribute name="imageUrl" optional="YES" attributeType="String"/>
         <attribute name="isRegON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="isTktON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="timeString" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>
         <attribute name="usesPanthi" attributeType="Boolean" usesScalarValueType="YES"/>
         <relationship name="panthis" toMany="YES" deletionRule="Cascade" destinationEntity="CDPanthi" inverseName="event" inverseEntity="CDPanthi"/>

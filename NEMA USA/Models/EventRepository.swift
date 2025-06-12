@@ -45,8 +45,9 @@ class EventRepository: ObservableObject {
                 let fetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
                 fetchRequest.predicate = NSPredicate(format: "id IN %@", existingEventIDs)
                 let existingCDEventsArray = try viewContext.fetch(fetchRequest)
-                let existingCDEventsDict = Dictionary(uniqueKeysWithValues: existingCDEventsArray.map { ($0.id!, $0) })
-                
+                let validCDEvents = existingCDEventsArray.filter { $0.id != nil && !$0.id!.isEmpty }
+                let existingCDEventsDict = Dictionary(uniqueKeysWithValues: validCDEvents.map { ($0.id!, $0) })
+
                 for eventData in fetchedEventsData { // <<<<<<<< CORRECTLY USES fetchedEventsData
                     let cdEvent = existingCDEventsDict[eventData.id] ?? CDEvent(context: viewContext)
                     // ... (mapping properties) ...
@@ -59,7 +60,9 @@ class EventRepository: ObservableObject {
                     cdEvent.imageUrl = eventData.imageUrl
                     // cdEvent.isTBD removed
                     cdEvent.isRegON = eventData.isRegON ?? false
+                    cdEvent.isTktON = eventData.isTktON ?? false
                     cdEvent.date = eventData.date
+                    cdEvent.timeString = eventData.timeString
                     cdEvent.eventLink = eventData.eventLink
                     cdEvent.usesPanthi = eventData.usesPanthi ?? false
                     cdEvent.lastUpdatedAt = eventData.lastUpdatedAt ?? Date()
@@ -252,7 +255,9 @@ class EventRepository: ObservableObject {
                     eventCatId: (cdEvent.eventCatId == 0 && cdEvent.categoryName == nil) ? nil : Int(cdEvent.eventCatId), // If 0 and no name implies nil
                     imageUrl: cdEvent.imageUrl,
                     isRegON: cdEvent.isRegON,
+                    isTktON: cdEvent.isTktON,
                     date: cdEvent.date,
+                    timeString: cdEvent.timeString,
                     eventLink: cdEvent.eventLink,
                     usesPanthi: cdEvent.usesPanthi,
                     lastUpdatedAt: cdEvent.lastUpdatedAt ?? Date() // Provide a default if lastUpdatedAt is optional in CD (it shouldn't be)

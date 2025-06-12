@@ -6,8 +6,21 @@
 //
 
 import SwiftUI
-import UIKit
 import Kingfisher
+
+struct SectionTitleStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.headline)
+            .foregroundColor(Color.primary)
+    }
+}
+
+extension View {
+    func sectionTitleStyle() -> some View {
+        self.modifier(SectionTitleStyle())
+    }
+}
 
 // MARK: - Subviews (File Private for Encapsulation)
 
@@ -71,52 +84,53 @@ fileprivate struct EventDetailsCardView: View {
                 Image(systemName: "calendar")
                     .foregroundColor(.orange)
                 Text("Date & Time")
-                    .font(.headline)
+                    .sectionTitleStyle()
+            }
+            if let date = event.date {
+                // If we have a valid Date object, format it.
+                let dateString = date.formatted(date: .long, time: .omitted)
+                // Use the specific time string from the API, with a fallback.
+                let timeToDisplay = event.timeString ?? "Time To Be Announced"
+                Text("\(dateString) • \(timeToDisplay)")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            } else {
+                // If the main date object is nil, just show the time string if it exists.
+                Text(event.timeString ?? "Date & Time To be Announced")
+                    .font(.subheadline)
                     .foregroundColor(.primary)
             }
-            if let date = event.date { // Check if event.date has a value
-                 Text([
-                     date.formatted(.dateTime.month().day().year()),
-                     date.formatted(.dateTime.hour().minute().locale(Locale.current))
-                   ]
-                   .compactMap { $0 } // Remove any nil components (if date formatting itself could return nil)
-                   .joined(separator: " • ")
-                 )
-                 .font(.subheadline)
-                 .foregroundColor(.primary)
-             } else {
-                 Text("To be Announced")
-                     .font(.subheadline)
-                     .foregroundColor(.primary)
-             }
-
+            
             Divider()
-
+            
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundColor(.orange)
                 Text("Location")
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                    .sectionTitleStyle()
             }
             Text(event.location ?? "To be Announced")
                 .font(.subheadline)
                 .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            Button(action: {
-                // Assuming MapAppLauncher is globally accessible or defined elsewhere
-                MapAppLauncher.presentMapOptions(for: event.location ?? "To be Announced")
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "location.fill")
-                    Text("View on Map")
+            
+            if let location = event.location,
+               !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               location.lowercased() != "to be announced" {
+                Button(action: {
+                    // Assuming MapAppLauncher is globally accessible or defined elsewhere
+                    MapAppLauncher.presentMapOptions(for: location)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "location.fill")
+                        Text("View on Map")
+                    }
                 }
+                .font(.subheadline.bold())
+                .foregroundColor(.orange)
+                .buttonStyle(PlainButtonStyle())
+                .tint(Color.orange)
             }
-            .font(.subheadline.bold())
-            .foregroundColor(.orange)
-            .buttonStyle(PlainButtonStyle())
-            .tint(Color.orange)
         }
         .frame(maxWidth: .infinity)
         .padding()
@@ -126,61 +140,155 @@ fileprivate struct EventDetailsCardView: View {
     }
 }
 
-fileprivate struct EventAboutCardView: View {
-    let descriptionText: String // Changed name from 'description' to avoid conflict with View.description
+struct HTMLRichText: View {
+    let html: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("About This Event")
-                .font(.headline)
-                .foregroundColor(.primary)
-            Text(descriptionText)
-                .font(.body)
-                .foregroundColor(.primary)
+        Text(createAttributedString())
+    }
+    
+    private func createAttributedString() -> AttributedString {
+        guard let data = html.data(using: .utf8) else {
+            return AttributedString()
         }
-        .frame(maxWidth: .infinity)
+        
+        guard let nsAttributedString = try? NSMutableAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
+            documentAttributes: nil
+        ) else {
+            return AttributedString()
+        }
+        
+        let fullRange = NSRange(location: 0, length: nsAttributedString.length)
+
+        // 1. Set the default text color for the entire string for Light/Dark Mode compatibility.
+        nsAttributedString.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
+
+        // 2. Enumerate through the fonts in the string
+        nsAttributedString.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            guard let originalFont = value as? UIFont else { return }
+            
+            // Get the traits (like bold, italic) from the font parsed from the HTML tag.
+            let traits = originalFont.fontDescriptor.symbolicTraits
+            
+            // Create a new font descriptor with the app's default system font for `.body`.
+            let systemBodyFontDescriptor = UIFont.preferredFont(forTextStyle: .body).fontDescriptor
+            
+            // Apply the original traits to the new system font descriptor.
+            if let newDescriptor = systemBodyFontDescriptor.withSymbolicTraits(traits) {
+                // Create the final font with the correct system family, size, and trait.
+                let newFont = UIFont(descriptor: newDescriptor, size: systemBodyFontDescriptor.pointSize)
+                // Replace the old font in the string with our new, correctly styled font.
+                nsAttributedString.removeAttribute(.font, range: range)
+                nsAttributedString.addAttribute(.font, value: newFont, range: range)
+            }
+        }
+
+        return AttributedString(nsAttributedString)
+    }
+}
+
+
+fileprivate struct EventAboutCardView: View {
+    let descriptionText: String
+    
+    private var containsHTML: Bool {
+        descriptionText.range(of: "<[a-zA-Z][^>]*>", options: .regularExpression) != nil
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.orange)
+                
+                Text("About This Event")
+                    .sectionTitleStyle()
+            }
+            .padding(.bottom, 4)
+            
+            if !descriptionText.isEmpty {
+                if containsHTML {
+                    HTMLRichText(html: descriptionText)
+                } else {
+                    Text(descriptionText)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
     }
 }
+
 
 fileprivate struct EventActionButtonsView: View {
     let event: Event // Needed for isRegON, eventLink and for NavigationLink destination
-
+    
     var body: some View {
-        Group { // Use Group if the outer padding/frame is handled by the parent VStack
-            if event.isRegON ?? false {
+        VStack(spacing: 15) {
+            // This logic correctly handles all combinations of ticketing and registration
+            var didShowPrimaryButton = false
+            
+            // Case 1: Ticketing is ON
+            if event.isTktON == true {
                 NavigationLink(destination: EventRegistrationView(event: event)) {
                     Text("Purchase Tickets")
-                        .font(.headline)
+                        .font(.headline).fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.orange)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }
-            } else {
-                Button(action: {
-                    let linkString = (event.eventLink?.isEmpty == false)
-                        ? event.eventLink!
-                        : "https://www.nemausa.org/events"
-                    if let url = URL(string: linkString) {
+                // Mark that we showed a button
+                let _ = { didShowPrimaryButton = true }()
+            }
+            // Case 2: Registration is ON
+            if event.isRegON == true {
+                // NOTE: This currently navigates to a placeholder view.
+                // You can replace this destination with your actual registration view in the future.
+                NavigationLink(destination: Text("Registration Form for \(event.title)")) {
+                    Text("Register Now")
+                        .font(.headline).fontWeight(.semibold)
+                        .frame(maxWidth: .infinity).padding()
+                        .background(Color.blue) // Use a different color to distinguish it
+                        .foregroundColor(.white).cornerRadius(10)
+                }
+                // Mark that we showed a button
+                let _ = { didShowPrimaryButton = true }()
+            }
+            // Case 3: NEITHER ticketing nor registration is ON
+            if !didShowPrimaryButton {
+                Text("Ticketing Closed")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.gray) // Use a distinct disabled color
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                // Show the "More Information" button as a fallback if a link exists
+                if let link = event.eventLink, let url = URL(string: link), !link.isEmpty {
+                    Button(action: {
                         UIApplication.shared.open(url)
+                    }) {
+                        Text("More Information")
+                            .font(.subheadline).fontWeight(.semibold)
+                            .frame(maxWidth: .infinity).padding()
+                            .background(Color.secondary.opacity(0.2))
+                            .foregroundColor(.primary)
+                            .cornerRadius(10)
                     }
-                }) {
-                    Text("More Information")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
                 }
             }
         }
-        .padding(.top, 16) // Original padding applied here
+        .padding(.top, 16)              
     }
 }
 
