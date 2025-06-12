@@ -4,14 +4,15 @@
         <attribute name="categoryName" optional="YES" attributeType="String"/>
         <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="eventCatId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
-        <attribute name="eventDescription" optional="YES" attributeType="String"/>
         <attribute name="eventLink" optional="YES" attributeType="String"/>
+        <attribute name="htmlDescription" optional="YES" attributeType="String"/>
         <attribute name="id" attributeType="String"/>
         <attribute name="imageUrl" optional="YES" attributeType="String"/>
         <attribute name="isRegON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="isTktON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="plainDescription" optional="YES" attributeType="String"/>
         <attribute name="timeString" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>
         <attribute name="usesPanthi" attributeType="Boolean" usesScalarValueType="YES"/>

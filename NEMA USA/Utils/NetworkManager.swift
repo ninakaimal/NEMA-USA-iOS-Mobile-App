@@ -45,20 +45,58 @@ private struct RefreshResponse: Decodable {
 }
 
 /// A delegate to unconditionally trust the nemausa.org cert
-public class InsecureTrustDelegate: NSObject, URLSessionDelegate {
-    public func urlSession(_ session: URLSession,
-                    didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
-    {
-        let host = challenge.protectionSpace.host
-        if host == "nemausa.org",
-           let trust = challenge.protectionSpace.serverTrust
-        {
-            completionHandler(.useCredential, URLCredential(trust: trust))
-        } else {
-            completionHandler(.performDefaultHandling, nil)
-        }
-    }
+//public class InsecureTrustDelegate: NSObject, URLSessionDelegate {
+//    public func urlSession(_ session: URLSession,
+//                    didReceive challenge: URLAuthenticationChallenge,
+//                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
+//    {
+//        let host = challenge.protectionSpace.host
+//        if host == "nemausa.org",
+//           let trust = challenge.protectionSpace.serverTrust
+//        {
+//            completionHandler(.useCredential, URLCredential(trust: trust))
+//        } else {
+//            completionHandler(.performDefaultHandling, nil)
+//        }
+//    }
+//}
+
+private enum DateFormatters {
+    
+    // Formatter 1: Handles dates with timezone offset AND fractional seconds
+    static let withFractionalSecondsOffset: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withFractionalSeconds, .withColonSeparatorInTimeZone]
+        return formatter
+    }()
+
+    // Formatter 2: Handles dates with timezone offset but NO fractional seconds
+    static let withoutFractionalSecondsOffset: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withColonSeparatorInTimeZone]
+        return formatter
+    }()
+    
+    // Formatter 3: Handles Zulu time (UTC) with fractional seconds
+    static let zuluWithFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withFractionalSeconds, .withTimeZone]
+        return formatter
+    }()
+
+    // Formatter 4: Handles Zulu time (UTC) WITHOUT fractional seconds
+    static let zuluWithoutFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime, .withTimeZone]
+        return formatter
+    }()
+    
+    // Formatter 5: Date only
+    static let dateOnly: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+        return formatter
+    }()
 }
 
 final class NetworkManager: NSObject {
@@ -124,9 +162,11 @@ final class NetworkManager: NSObject {
         let cfg = URLSessionConfiguration.default
         cfg.httpCookieAcceptPolicy = .always
         cfg.httpCookieStorage     = HTTPCookieStorage.shared
-        return URLSession(configuration: cfg,
-                          delegate: InsecureTrustDelegate(),
-                          delegateQueue: nil)
+        // disabling unsigned SSL piece in production
+        //return URLSession(configuration: cfg,
+        //                  delegate: InsecureTrustDelegate(),
+        //                  delegateQueue: nil)
+        return URLSession(configuration: cfg) //replaced above sandbox code with this
     }()
     
     /// A special session for login so we can catch the 302 redirect
@@ -141,81 +181,21 @@ final class NetworkManager: NSObject {
     
     private lazy var iso8601JSONDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-
-        // Formatter 1: Handles dates with timezone offset AND fractional seconds (e.g., "2025-05-28T23:59:42.123-04:00")
-        let formatterWithFractionalSecondsOffset = ISO8601DateFormatter()
-        formatterWithFractionalSecondsOffset.formatOptions = [
-            .withInternetDateTime,
-            .withDashSeparatorInDate,
-            .withColonSeparatorInTime,
-            .withFractionalSeconds,
-            .withColonSeparatorInTimeZone
-        ]
-
-        // Formatter 2: Handles dates with timezone offset but NO fractional seconds (e.g., "2025-05-29T20:43:10-04:00")
-        // THIS IS LIKELY THE ONE NEEDED FOR YOUR PANTHI `last_updated_at`
-        let formatterWithoutFractionalSecondsOffset = ISO8601DateFormatter()
-        formatterWithoutFractionalSecondsOffset.formatOptions = [
-            .withInternetDateTime,
-            .withDashSeparatorInDate,
-            .withColonSeparatorInTime,
-            .withColonSeparatorInTimeZone
-        ]
-        
-        // Formatter 3: Handles Zulu time (UTC) with fractional seconds (e.g., "2025-05-28T20:44:34.465Z")
-        let formatterZuluWithFractionalSeconds = ISO8601DateFormatter()
-        formatterZuluWithFractionalSeconds.formatOptions = [
-            .withInternetDateTime,
-            .withDashSeparatorInDate,
-            .withColonSeparatorInTime,
-            .withFractionalSeconds,
-            .withTimeZone // Handles 'Z' for Zulu/UTC
-        ]
-
-        // Formatter 4: Handles Zulu time (UTC) WITHOUT fractional seconds (e.g., "2025-05-28T20:44:34Z")
-        let formatterZuluWithoutFractionalSeconds = ISO8601DateFormatter()
-        formatterZuluWithoutFractionalSeconds.formatOptions = [
-            .withInternetDateTime,
-            .withDashSeparatorInDate,
-            .withColonSeparatorInTime,
-            .withTimeZone // Handles 'Z' for Zulu/UTC
-        ]
-        
-        // Formatter 5: Date only (e.g., "2025-06-18" for early_bird_end_date if it's just a date)
-        let formatterDateOnly = ISO8601DateFormatter()
-        formatterDateOnly.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-
         decoder.dateDecodingStrategy = .custom { decoder throws -> Date in
             let container = try decoder.singleValueContainer()
             let dateString = try container.decode(String.self)
-            let codingPathString = container.codingPath.map { $0.stringValue }.joined(separator: ".")
-
-            // Attempt to decode with the various formatters
-            if let date = formatterWithoutFractionalSecondsOffset.date(from: dateString) {
-                return date
-            }
-            if let date = formatterWithFractionalSecondsOffset.date(from: dateString) {
-                return date
-            }
-            if let date = formatterZuluWithoutFractionalSeconds.date(from: dateString) {
-                return date
-            }
-            if let date = formatterZuluWithFractionalSeconds.date(from: dateString) {
-                return date
-            }
-            if let date = formatterDateOnly.date(from: dateString) {
-                return date
-            }
             
-            print("🚨 Custom Date Decoding Failed for key path '\(codingPathString)': String '\(dateString)' could not be parsed by any configured ISO8601 formatter.")
-            throw DecodingError.dataCorruptedError(in: container,
-                                                 debugDescription: "Date string '\(dateString)' at path '\(codingPathString)' does not match any expected ISO8601 format.")
+            // Attempt to decode with the pre-built, static formatters
+            if let date = DateFormatters.withoutFractionalSecondsOffset.date(from: dateString) { return date }
+            if let date = DateFormatters.withFractionalSecondsOffset.date(from: dateString) { return date }
+            if let date = DateFormatters.zuluWithoutFractionalSeconds.date(from: dateString) { return date }
+            if let date = DateFormatters.zuluWithFractionalSeconds.date(from: dateString) { return date }
+            if let date = DateFormatters.dateOnly.date(from: dateString) { return date }
+            
+            let codingPathString = container.codingPath.map { $0.stringValue }.joined(separator: ".")
+            print("🚨 Custom Date Decoding Failed for key path '\(codingPathString)': String '\(dateString)' could not be parsed.")
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Date string does not match any expected ISO8601 format.")
         }
-
-        // CRITICAL: Ensure this line is present and uncommented.
-        // This maps JSON keys like "last_updated_at" to Swift properties like `lastUpdatedAt`.
-        // decoder.keyDecodingStrategy = .convertFromSnakeCase
-
         return decoder
     }()
     
@@ -1531,20 +1511,20 @@ final class NetworkManager: NSObject {
 // MARK: – Trust & Redirects for loginSession
 extension NetworkManager: URLSessionDelegate, URLSessionTaskDelegate {
 
-    // Trust the test cert unconditionally
-    func urlSession(_ session: URLSession,
-                    didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
-    {
-        let host = challenge.protectionSpace.host
-        if host == "nemausa.org",
-           let trust = challenge.protectionSpace.serverTrust
-        {
-            completionHandler(.useCredential, URLCredential(trust: trust))
-        } else {
-            completionHandler(.performDefaultHandling, nil)
-        }
-    }
+    // Trust the test cert unconditionally - but comment in production use
+//    func urlSession(_ session: URLSession,
+//                    didReceive challenge: URLAuthenticationChallenge,
+//                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void)
+//    {
+//        let host = challenge.protectionSpace.host
+//        if host == "nemausa.org",
+//           let trust = challenge.protectionSpace.serverTrust
+//        {
+//            completionHandler(.useCredential, URLCredential(trust: trust))
+//        } else {
+//            completionHandler(.performDefaultHandling, nil)
+//        }
+//    }
 
     // Prevent redirects on our loginSession so we can see the 302
     func urlSession(_ session: URLSession,

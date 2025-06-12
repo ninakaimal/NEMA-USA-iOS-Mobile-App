@@ -23,21 +23,19 @@
                                 <color key="textColor" red="0.0" green="0.0" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                 <nil key="highlightedColor"/>
                             </label>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" semanticContentAttribute="playback" horizontalHuggingPriority="251" verticalHuggingPriority="251" misplaced="YES" image="LaunchLogo" translatesAutoresizingMaskIntoConstraints="NO" id="3Kq-ak-gG9">
-                                <rect key="frame" x="-3" y="171" width="393" height="436"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" semanticContentAttribute="playback" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="LaunchLogo" translatesAutoresizingMaskIntoConstraints="NO" id="3Kq-ak-gG9">
+                                <rect key="frame" x="28.666666666666629" y="306" width="336" height="240"/>
                                 <constraints>
-                                    <constraint firstAttribute="height" relation="greaterThanOrEqual" constant="256" id="IG0-1c-2EN"/>
-                                    <constraint firstAttribute="width" relation="greaterThanOrEqual" constant="480" id="dWh-hy-4DY"/>
+                                    <constraint firstAttribute="width" secondItem="3Kq-ak-gG9" secondAttribute="height" multiplier="7:5" id="8t8-yy-lqM"/>
+                                    <constraint firstAttribute="height" constant="240" id="S8W-pR-I1y"/>
                                 </constraints>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
                         <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
-                            <constraint firstItem="3Kq-ak-gG9" firstAttribute="top" secondItem="Bcu-3y-fUS" secondAttribute="top" constant="112" id="0Jh-ZR-j7x"/>
-                            <constraint firstItem="3Kq-ak-gG9" firstAttribute="leading" secondItem="Bcu-3y-fUS" secondAttribute="leading" id="BvP-wC-MJr"/>
-                            <constraint firstItem="Bcu-3y-fUS" firstAttribute="bottom" secondItem="3Kq-ak-gG9" secondAttribute="bottom" constant="211" id="FN5-RE-AsO"/>
-                            <constraint firstItem="3Kq-ak-gG9" firstAttribute="trailing" secondItem="Bcu-3y-fUS" secondAttribute="trailing" id="uGC-HF-qxy"/>
+                            <constraint firstItem="3Kq-ak-gG9" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="R5t-cA-gMN"/>
+                            <constraint firstItem="3Kq-ak-gG9" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="aD0-3L-bQP"/>
                         </constraints>
                     </view>
                 </viewController>

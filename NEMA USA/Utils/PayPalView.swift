@@ -83,20 +83,20 @@ struct PayPalView: UIViewRepresentable {
             decisionHandler(.allow)
         }
 
-        // 🔥 ADD THIS METHOD BELOW:
-            func webView(_ webView: WKWebView,
-                         didReceive challenge: URLAuthenticationChallenge,
-                         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-
-                if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-                   challenge.protectionSpace.host.contains("nemausa.org"),
-                   let serverTrust = challenge.protectionSpace.serverTrust {
-                    print("⚠️ Bypassing SSL for domain:", challenge.protectionSpace.host)
-                    completionHandler(.useCredential, URLCredential(trust: serverTrust))
-                } else {
-                    completionHandler(.performDefaultHandling, nil)
-                }
-            }
+        // Disabling this in production, enable in sandbox for unsigned SSL cert
+        //    func webView(_ webView: WKWebView,
+        //                 didReceive challenge: URLAuthenticationChallenge,
+        //                 completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        //
+        //        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+        //           challenge.protectionSpace.host.contains("nemausa.org"),
+        //           let serverTrust = challenge.protectionSpace.serverTrust {
+        //            print("⚠️ Bypassing SSL for domain:", challenge.protectionSpace.host)
+        //            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        //        } else {
+        //            completionHandler(.performDefaultHandling, nil)
+        //        }
+        //    }
  
         private func confirmPaymentOnBackend(paymentId: String, payerId: String, callbackURL: URL, comments: String) {
             guard let comps = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
@@ -279,20 +279,20 @@ struct PayPalView: UIViewRepresentable {
             }.resume()
         }
 
-        // Allow self-signed certificates temporarily for testing
-        func urlSession(_ session: URLSession,
-                        didReceive challenge: URLAuthenticationChallenge,
-                        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-
-            guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-                  challenge.protectionSpace.host == "nemausa.org",
-                  let trust = challenge.protectionSpace.serverTrust else {
-                completionHandler(.performDefaultHandling, nil)
-                return
-            }
-
-            // ⚠️ For TESTING ONLY: Accept invalid SSL certificate
-            completionHandler(.useCredential, URLCredential(trust: trust))
-        }
+        // Allow self-signed certificates temporarily for testing - remove in production
+//        func urlSession(_ session: URLSession,
+//                        didReceive challenge: URLAuthenticationChallenge,
+//                        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+//
+//            guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+//                  challenge.protectionSpace.host == "nemausa.org",
+//                  let trust = challenge.protectionSpace.serverTrust else {
+//                completionHandler(.performDefaultHandling, nil)
+//                return
+//           }
+//
+//            // ⚠️ For TESTING ONLY: Accept invalid SSL certificate
+//            completionHandler(.useCredential, URLCredential(trust: trust))
+//        }
     }
 }

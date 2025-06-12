@@ -11,7 +11,8 @@ import Foundation
 struct Event: Identifiable, Decodable, Hashable {
     let id: String
     let title: String
-    let description: String?
+    let plainDescription: String?
+    let htmlDescription: String?
     let location: String?
     let categoryName: String?
     let eventCatId: Int?
@@ -25,13 +26,14 @@ struct Event: Identifiable, Decodable, Hashable {
     let lastUpdatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, description, location // Assumes JSON key matches property name for these
+        case id, title, location, date
+        case plainDescription = "plain_description"
+        case htmlDescription = "html_description"
         case categoryName = "category_name"
         case eventCatId = "event_cat_id"
         case imageUrl = "image_url"
         case isRegON = "is_reg_on"
         case isTktON = "is_tkt_on"
-        case date // Assuming JSON key is "date"
         case timeString = "time_string"
         case eventLink = "event_link"
         case usesPanthi = "uses_panthi"
@@ -43,62 +45,38 @@ struct Event: Identifiable, Decodable, Hashable {
 
         id = try container.decode(String.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
-        description = try container.decodeIfPresent(String.self, forKey: .description)
+        
+        // Decode the new description fields
+        plainDescription = try container.decodeIfPresent(String.self, forKey: .plainDescription)
+        htmlDescription = try container.decodeIfPresent(String.self, forKey: .htmlDescription)
+        
         location = try container.decodeIfPresent(String.self, forKey: .location)
         categoryName = try container.decodeIfPresent(String.self, forKey: .categoryName)
         eventCatId = try container.decodeIfPresent(Int.self, forKey: .eventCatId)
-        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl) // Explicitly decode with CodingKey
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
         eventLink = try container.decodeIfPresent(String.self, forKey: .eventLink)
 
-        // Explicitly use the decoder's date strategy (from NetworkManager)
         self.date = try container.decodeIfPresent(Date.self, forKey: .date)
         self.timeString = try container.decodeIfPresent(String.self, forKey: .timeString)
         lastUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .lastUpdatedAt)
 
-        // Robust boolean decoding for isRegON
-        if container.contains(.isRegON) {
-            if let boolValue = try? container.decode(Bool.self, forKey: .isRegON) {
-                self.isRegON = boolValue
-            } else if let intValue = try? container.decode(Int.self, forKey: .isRegON) {
-                self.isRegON = (intValue == 1)
-            } else if let stringValue = try? container.decode(String.self, forKey: .isRegON) {
-                self.isRegON = (stringValue.lowercased() == "true" || stringValue == "1")
-            } else {
-                self.isRegON = nil // Or default to false if that makes more sense: false
-            }
-        } else {
-            self.isRegON = nil // Or default to false
-        }
+        // Robust boolean decoding for isRegON (Unchanged)
+        if let boolValue = try? container.decode(Bool.self, forKey: .isRegON) { self.isRegON = boolValue }
+        else if let intValue = try? container.decode(Int.self, forKey: .isRegON) { self.isRegON = (intValue == 1) }
+        else if let stringValue = try? container.decode(String.self, forKey: .isRegON) { self.isRegON = (stringValue.lowercased() == "true" || stringValue == "1") }
+        else { self.isRegON = nil }
         
-        if container.contains(.isTktON) {
-            if let boolValue = try? container.decode(Bool.self, forKey: .isTktON) {
-                self.isTktON = boolValue
-            } else if let intValue = try? container.decode(Int.self, forKey: .isTktON) {
-                self.isTktON = (intValue == 1)
-            } else if let stringValue = try? container.decode(String.self, forKey: .isTktON) {
-                self.isTktON = (stringValue.lowercased() == "true" || stringValue == "1")
-            } else {
-                self.isTktON = nil
-            }
-        } else {
-            self.isTktON = nil
-        }
+        // Robust boolean decoding for isTktON (Unchanged)
+        if let boolValue = try? container.decode(Bool.self, forKey: .isTktON) { self.isTktON = boolValue }
+        else if let intValue = try? container.decode(Int.self, forKey: .isTktON) { self.isTktON = (intValue == 1) }
+        else if let stringValue = try? container.decode(String.self, forKey: .isTktON) { self.isTktON = (stringValue.lowercased() == "true" || stringValue == "1") }
+        else { self.isTktON = nil }
 
-        // Robust boolean decoding for usesPanthi
-        if container.contains(.usesPanthi) {
-            if let boolValue = try? container.decode(Bool.self, forKey: .usesPanthi) {
-                self.usesPanthi = boolValue
-            } else if let intValue = try? container.decode(Int.self, forKey: .usesPanthi) {
-                self.usesPanthi = (intValue == 1)
-            } else if let stringValue = try? container.decode(String.self, forKey: .usesPanthi) {
-                self.usesPanthi = (stringValue.lowercased() == "true" || stringValue == "1")
-            } else {
-                self.usesPanthi = nil // Or default to false
-            }
-        } else {
-            self.usesPanthi = nil // Or default to false
-        }
-        
+        // Robust boolean decoding for usesPanthi (Unchanged)
+        if let boolValue = try? container.decode(Bool.self, forKey: .usesPanthi) { self.usesPanthi = boolValue }
+        else if let intValue = try? container.decode(Int.self, forKey: .usesPanthi) { self.usesPanthi = (intValue == 1) }
+        else if let stringValue = try? container.decode(String.self, forKey: .usesPanthi) { self.usesPanthi = (stringValue.lowercased() == "true" || stringValue == "1") }
+        else { self.usesPanthi = nil }
         // Your detailed logging from the previous version of Event.swift can be re-added here if needed,
         // after each property is assigned, for example:
         // print("   FINAL Event ID \(self.id) - imageUrl: \(self.imageUrl ?? "NIL")")
@@ -107,12 +85,13 @@ struct Event: Identifiable, Decodable, Hashable {
     }
 
     // Memberwise initializer (keep for manual creation / CoreData mapping)
-    init(id: String, title: String, description: String?, location: String?,
+    init(id: String, title: String, plainDescription: String?, htmlDescription: String?, location: String?,
          categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, date: Date?, timeString: String?, eventLink: String?,
          usesPanthi: Bool?, lastUpdatedAt: Date?) {
         self.id = id
         self.title = title
-        self.description = description
+        self.plainDescription = plainDescription
+        self.htmlDescription = htmlDescription
         self.location = location
         self.categoryName = categoryName
         self.eventCatId = eventCatId

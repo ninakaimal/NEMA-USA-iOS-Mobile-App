@@ -53,7 +53,8 @@ class EventRepository: ObservableObject {
                     // ... (mapping properties) ...
                     cdEvent.id = eventData.id // Ensure id is set for new objects too
                     cdEvent.title = eventData.title
-                    cdEvent.eventDescription = eventData.description
+                    cdEvent.plainDescription = eventData.plainDescription
+                    cdEvent.htmlDescription = eventData.htmlDescription
                     cdEvent.location = eventData.location
                     cdEvent.categoryName = eventData.categoryName
                     cdEvent.eventCatId = eventData.eventCatId.map { Int32($0) } ?? 0
@@ -244,12 +245,12 @@ class EventRepository: ObservableObject {
             let cdEvents = try viewContext.fetch(request)
             // Map CDEvent objects back to Event structs for the UI
             self.events = cdEvents.map { cdEvent -> Event in
-                // This mapping needs to be robust.
                 // Ensure all properties of Event struct are populated from cdEvent.
                 return Event(
                     id: cdEvent.id ?? "",
                     title: cdEvent.title ?? "No Title",
-                    description: cdEvent.eventDescription ?? "",
+                    plainDescription: cdEvent.plainDescription,
+                    htmlDescription: cdEvent.htmlDescription,   
                     location: cdEvent.location ?? "To be Announced",
                     categoryName: cdEvent.categoryName,
                     eventCatId: (cdEvent.eventCatId == 0 && cdEvent.categoryName == nil) ? nil : Int(cdEvent.eventCatId), // If 0 and no name implies nil
@@ -269,4 +270,4 @@ class EventRepository: ObservableObject {
             lastSyncErrorMessage = "Failed to load local events."
         }
     }
-}
+}  // End of File

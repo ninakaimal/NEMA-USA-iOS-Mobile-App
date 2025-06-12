@@ -30,7 +30,8 @@
                 let matchesSearch = searchQuery.isEmpty
                     || ev.title.localizedCaseInsensitiveContains(searchQuery)
                     // Use optional chaining and nil-coalescing for optional description and location
-                    || (ev.description?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+                    || (ev.plainDescription?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+                    || (ev.htmlDescription?.stripHTML().localizedCaseInsensitiveContains(searchQuery) ?? false)
                     || (ev.location?.localizedCaseInsensitiveContains(searchQuery) ?? false)
                 let matchesCat = selectedCategory == "All" || ev.categoryName == selectedCategory
                 return matchesSearch && matchesCat

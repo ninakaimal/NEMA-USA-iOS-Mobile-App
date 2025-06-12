@@ -28,8 +28,8 @@
     <key>NSUserNotificationUsageDescription</key>
     <string>We’d like to send you event reminders and NEMA updates.</string>
 
-    <!-- App Transport Security: allow HTTP to your API hosts -->
-    <key>NSAppTransportSecurity</key>
+    <!-- Disable for Prod - App Transport Security: allow HTTP to your API hosts -->
+    <!-- <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSExceptionDomains</key>
         <dict>
@@ -53,7 +53,7 @@
             </dict>
         </dict>
     </dict>
-
+    -->
     <!-- Custom URL scheme for PayPal return -->
     <key>CFBundleURLTypes</key>
     <array>

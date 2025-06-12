@@ -148,74 +148,68 @@ struct HTMLRichText: View {
     }
     
     private func createAttributedString() -> AttributedString {
-        guard let data = html.data(using: .utf8) else {
-            return AttributedString()
-        }
-        
-        guard let nsAttributedString = try? NSMutableAttributedString(
-            data: data,
-            options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
-            documentAttributes: nil
-        ) else {
-            return AttributedString()
-        }
-        
-        let fullRange = NSRange(location: 0, length: nsAttributedString.length)
-
-        // 1. Set the default text color for the entire string for Light/Dark Mode compatibility.
-        nsAttributedString.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
-
-        // 2. Enumerate through the fonts in the string
-        nsAttributedString.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
-            guard let originalFont = value as? UIFont else { return }
-            
-            // Get the traits (like bold, italic) from the font parsed from the HTML tag.
-            let traits = originalFont.fontDescriptor.symbolicTraits
-            
-            // Create a new font descriptor with the app's default system font for `.body`.
-            let systemBodyFontDescriptor = UIFont.preferredFont(forTextStyle: .body).fontDescriptor
-            
-            // Apply the original traits to the new system font descriptor.
-            if let newDescriptor = systemBodyFontDescriptor.withSymbolicTraits(traits) {
-                // Create the final font with the correct system family, size, and trait.
-                let newFont = UIFont(descriptor: newDescriptor, size: systemBodyFontDescriptor.pointSize)
-                // Replace the old font in the string with our new, correctly styled font.
-                nsAttributedString.removeAttribute(.font, range: range)
-                nsAttributedString.addAttribute(.font, value: newFont, range: range)
+        // We prepend a CSS style block to the HTML.
+        // This sets a default font and color but allows inline styles
+        // from your HTML (e.g., style="color:red;") to take precedence.
+        let styledHTML = """
+        <style>
+            body {
+                font-family: -apple-system, sans-serif;
+                font-size: \(UIFont.preferredFont(forTextStyle: .body).pointSize)px;
+                color: \(UIColor.label.toHex());
             }
+        </style>
+        \(html)
+        """
+        
+        guard let data = styledHTML.data(using: .utf8),
+              let nsAttributedString = try? NSAttributedString(
+                  data: data,
+                  options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
+                  documentAttributes: nil
+              )
+        else {
+            return AttributedString()
         }
-
+        
         return AttributedString(nsAttributedString)
     }
 }
 
-
-fileprivate struct EventAboutCardView: View {
-    let descriptionText: String
-    
-    private var containsHTML: Bool {
-        descriptionText.range(of: "<[a-zA-Z][^>]*>", options: .regularExpression) != nil
+extension UIColor {
+    func toHex() -> String {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        guard self.getRed(&r, green: &g, blue: &b, alpha: &a) else {
+            return "#000000" // Default to black on failure
+        }
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
     }
-    
+}
+
+fileprivate struct DescriptionCardView: View {
+    let title: String
+    let content: String
+    let isHTML: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle")
                     .foregroundColor(.orange)
-                
-                Text("About This Event")
+                Text(title)
                     .sectionTitleStyle()
             }
             .padding(.bottom, 4)
             
-            if !descriptionText.isEmpty {
-                if containsHTML {
-                    HTMLRichText(html: descriptionText)
-                } else {
-                    Text(descriptionText)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                }
+            if isHTML {
+                HTMLRichText(html: content)
+            } else {
+                Text(content)
+                    .font(.body)
+                    .foregroundColor(.primary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -326,17 +320,23 @@ struct EventDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
 
                     EventTitleCategoryView(title: event.title, categoryName: event.categoryName)
-
                     EventImageView(imageUrlString: event.imageUrl)
-
                     EventDetailsCardView(event: event)
 
-                    EventAboutCardView(descriptionText: event.description ?? "")
+                    // Card 1: For the plain text description
+                    if let plainDesc = event.plainDescription, !plainDesc.isEmpty {
+                        DescriptionCardView(title: "About This Event", content: plainDesc, isHTML: false)
+                    }
+                    
+                    // Card 2: For the HTML description/guidelines
+                    if let htmlDesc = event.htmlDescription, !htmlDesc.isEmpty {
+                        DescriptionCardView(title: "Additional Details", content: htmlDesc, isHTML: true)
+                    }
 
                     EventActionButtonsView(event: event)
                 }
                 .padding()
-                .background(Color(.systemBackground)) // Original background
+                .background(Color(.systemBackground))
             }
         }
         .navigationTitle("Event Details")

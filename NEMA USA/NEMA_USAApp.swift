@@ -39,11 +39,10 @@ struct NEMA_USAApp: App {
             .alsoPrefetchToMemory
         ]
         
-        // Configure trusted hosts for test environment
-        if let customDownloader = KingfisherManager.shared.downloader as? ImageDownloader {
-            customDownloader.trustedHosts = ["nemausa.org"]
-        }
-        
+        // Configure trusted hosts for test environment - disable in production
+//        if let customDownloader = KingfisherManager.shared.downloader as? ImageDownloader {
+//            customDownloader.trustedHosts = ["nemausa.org"]
+//        }        
         print("✅ Kingfisher configured with optimized caching settings")
     }
 
