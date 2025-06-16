@@ -19,11 +19,13 @@ struct Event: Identifiable, Decodable, Hashable {
     let imageUrl: String?
     let isRegON: Bool?
     let isTktON: Bool?
+    let showBuyTickets: Bool?
     let date: Date?
     let timeString: String? 
     let eventLink: String?
     let usesPanthi: Bool?
     let lastUpdatedAt: Date?
+    var programs: [EventProgram]? = nil //not part of JSON decoding so no CodingKey needed
 
     enum CodingKeys: String, CodingKey {
         case id, title, location, date
@@ -34,6 +36,7 @@ struct Event: Identifiable, Decodable, Hashable {
         case imageUrl = "image_url"
         case isRegON = "is_reg_on"
         case isTktON = "is_tkt_on"
+        case showBuyTickets = "show_buy_tickets"
         case timeString = "time_string"
         case eventLink = "event_link"
         case usesPanthi = "uses_panthi"
@@ -71,12 +74,19 @@ struct Event: Identifiable, Decodable, Hashable {
         else if let intValue = try? container.decode(Int.self, forKey: .isTktON) { self.isTktON = (intValue == 1) }
         else if let stringValue = try? container.decode(String.self, forKey: .isTktON) { self.isTktON = (stringValue.lowercased() == "true" || stringValue == "1") }
         else { self.isTktON = nil }
-
+        
+        // Robust boolean decoding for showBuyTickets
+        if let boolValue = try? container.decode(Bool.self, forKey: .showBuyTickets) { self.showBuyTickets = boolValue }
+        else if let intValue = try? container.decode(Int.self, forKey: .showBuyTickets) { self.showBuyTickets = (intValue == 1) }
+        else if let stringValue = try? container.decode(String.self, forKey: .showBuyTickets) { self.showBuyTickets = (stringValue.lowercased() == "true" || stringValue == "1") }
+        
+        else { self.showBuyTickets = nil }
         // Robust boolean decoding for usesPanthi (Unchanged)
         if let boolValue = try? container.decode(Bool.self, forKey: .usesPanthi) { self.usesPanthi = boolValue }
         else if let intValue = try? container.decode(Int.self, forKey: .usesPanthi) { self.usesPanthi = (intValue == 1) }
         else if let stringValue = try? container.decode(String.self, forKey: .usesPanthi) { self.usesPanthi = (stringValue.lowercased() == "true" || stringValue == "1") }
         else { self.usesPanthi = nil }
+        
         // Your detailed logging from the previous version of Event.swift can be re-added here if needed,
         // after each property is assigned, for example:
         // print("   FINAL Event ID \(self.id) - imageUrl: \(self.imageUrl ?? "NIL")")
@@ -86,7 +96,7 @@ struct Event: Identifiable, Decodable, Hashable {
 
     // Memberwise initializer (keep for manual creation / CoreData mapping)
     init(id: String, title: String, plainDescription: String?, htmlDescription: String?, location: String?,
-         categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, date: Date?, timeString: String?, eventLink: String?,
+         categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, showBuyTickets: Bool?, date: Date?, timeString: String?, eventLink: String?,
          usesPanthi: Bool?, lastUpdatedAt: Date?) {
         self.id = id
         self.title = title
@@ -98,6 +108,7 @@ struct Event: Identifiable, Decodable, Hashable {
         self.imageUrl = imageUrl
         self.isRegON = isRegON
         self.isTktON = isTktON
+        self.showBuyTickets = showBuyTickets
         self.date = date
         self.timeString = timeString
         self.eventLink = eventLink

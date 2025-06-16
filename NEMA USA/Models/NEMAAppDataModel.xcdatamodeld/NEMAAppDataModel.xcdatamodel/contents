@@ -13,11 +13,22 @@
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
         <attribute name="plainDescription" optional="YES" attributeType="String"/>
+        <attribute name="showBuyTickets" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="timeString" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>
         <attribute name="usesPanthi" attributeType="Boolean" usesScalarValueType="YES"/>
         <relationship name="panthis" toMany="YES" deletionRule="Cascade" destinationEntity="CDPanthi" inverseName="event" inverseEntity="CDPanthi"/>
+        <relationship name="programs" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CDEventProgram" inverseName="event" inverseEntity="CDEventProgram"/>
         <relationship name="ticketTypes" toMany="YES" deletionRule="Cascade" destinationEntity="CDEventTicketType" inverseName="event" inverseEntity="CDEventTicketType"/>
+    </entity>
+    <entity name="CDEventProgram" representedClassName="CDEventProgram" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="String"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="registrationStatus" optional="YES" attributeType="String"/>
+        <attribute name="rulesAndGuidelines" optional="YES" attributeType="String"/>
+        <attribute name="time" optional="YES" attributeType="String"/>
+        <relationship name="categories" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CDProgramCategory" inverseName="program" inverseEntity="CDProgramCategory"/>
+        <relationship name="event" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="programs" inverseEntity="CDEvent"/>
     </entity>
     <entity name="CDEventTicketType" representedClassName="CDEventTicketType" syncable="YES" codeGenerationType="class">
         <attribute name="currencyCode" attributeType="String"/>
@@ -40,5 +51,10 @@
         <attribute name="panthiDescription" optional="YES" attributeType="String"/>
         <attribute name="totalSlots" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="event" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="panthis" inverseEntity="CDEvent"/>
+    </entity>
+    <entity name="CDProgramCategory" representedClassName="CDProgramCategory" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="name" attributeType="String"/>
+        <relationship name="program" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDEventProgram" inverseName="categories" inverseEntity="CDEventProgram"/>
     </entity>
 </model>

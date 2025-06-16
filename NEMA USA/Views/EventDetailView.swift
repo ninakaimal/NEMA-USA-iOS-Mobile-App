@@ -22,6 +22,63 @@ extension View {
     }
 }
 
+// ViewModel manages fetching and storing the programs for the detail view
+
+@MainActor
+class EventProgramsViewModel: ObservableObject {
+    @Published var programs: [EventProgram] = []
+    @Published var isLoading = false
+    
+    private let repository = EventRepository()
+    
+    func loadPrograms(for eventId: String) async {
+        guard !isLoading else { return }
+        isLoading = true
+        self.programs = await repository.syncPrograms(forEventID: eventId)
+        isLoading = false
+    }
+}
+
+
+
+// UI COMPONENT 2: The main card that holds the list of programs.
+fileprivate struct CompetitionsCardView: View {
+    @ObservedObject var viewModel: EventProgramsViewModel
+    @Binding var programToRegister: EventProgram?
+    @Binding var showLoginSheet: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "flag.2.crossed.fill").foregroundColor(.orange)
+                Text("Competitions & Performances").sectionTitleStyle()
+            }
+            .padding([.horizontal, .top]).padding(.bottom, 8)
+            
+            Divider().padding(.horizontal)
+
+            if viewModel.isLoading && viewModel.programs.isEmpty {
+                ProgressView().frame(maxWidth: .infinity).padding()
+            } else if !viewModel.programs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(viewModel.programs) { program in
+                        VStack {
+                            EventProgramRowView(program: program,programToRegister: $programToRegister,showLoginSheet: $showLoginSheet)
+                            if program.id != viewModel.programs.last?.id { Divider().padding(.horizontal) }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            } else {
+                Text("No specific programs listed for this event.")
+                    .font(.subheadline).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center).padding()
+            }
+        }
+        .background(Color(.secondarySystemBackground)).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+    }
+}
+
 // MARK: - Subviews (File Private for Encapsulation)
 
 fileprivate struct EventTitleCategoryView: View {
@@ -189,6 +246,86 @@ extension UIColor {
     }
 }
 
+// UI COMPONENT 1: A view for a single row in the new card.
+fileprivate struct EventProgramRowView: View {
+    let program: EventProgram
+    
+    @Binding var programToRegister: EventProgram?
+    @Binding var showLoginSheet: Bool
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Program Title, Time, and Categories
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(program.name).font(.headline.weight(.medium))
+                    if let time = program.time, !time.isEmpty {
+                        Text(time).font(.caption).foregroundColor(.secondary)
+                    }
+                    // Display categories in a flow-like layout
+                    if !program.categories.isEmpty {
+                        WrappingHStack(id: \.id, data: program.categories, alignment: .leading, horizontalSpacing: 4, verticalSpacing: 4) { category in
+                            Text(category.name)
+                                .font(.caption2).padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.orange.opacity(0.1)).foregroundColor(.orange).cornerRadius(6)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+
+                Spacer()
+                // Registration Status
+                Button(action: {
+                    // First, set which program the user intends to register for.
+                    self.programToRegister = program
+                    // Now, check if the user is logged in.
+                    if DatabaseManager.shared.jwtApiToken == nil {
+                        // If not logged in, show the login sheet.
+                        // After login, the .onReceive modifier will handle the rest.
+                        self.showLoginSheet = true
+                    }
+                    
+                }) {
+                    Text(program.registrationStatus ?? "N/A")
+                        .font(.caption.bold())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(
+                            (program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist") ? Color.orange : Color.gray
+                        )
+                        .clipShape(Capsule())
+                }
+                .disabled(!(program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist"))
+            }
+
+            // Rules and Guidelines expander
+            if let rules = program.rulesAndGuidelines, !rules.isEmpty {
+                Button(action: {
+                    withAnimation { isExpanded.toggle() }
+                }) {
+                    HStack {
+                        Text("Rules and Guidelines")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.orange)
+                }
+                .padding(.top, 8)
+                
+                if isExpanded {
+                    HTMLRichText(html: rules)
+                        .font(.body)
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
 fileprivate struct DescriptionCardView: View {
     let title: String
     let content: String
@@ -223,75 +360,65 @@ fileprivate struct DescriptionCardView: View {
 
 fileprivate struct EventActionButtonsView: View {
     let event: Event // Needed for isRegON, eventLink and for NavigationLink destination
+    let hasPrograms: Bool
     
     var body: some View {
         VStack(spacing: 15) {
-            // This logic correctly handles all combinations of ticketing and registration
-            var didShowPrimaryButton = false
-            
-            // Case 1: Ticketing is ON
-            if event.isTktON == true {
-                NavigationLink(destination: EventRegistrationView(event: event)) {
-                    Text("Purchase Tickets")
-                        .font(.headline).fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                // Mark that we showed a button
-                let _ = { didShowPrimaryButton = true }()
-            }
-            // Case 2: Registration is ON
-            if event.isRegON == true {
-                // NOTE: This currently navigates to a placeholder view.
-                // You can replace this destination with your actual registration view in the future.
-                NavigationLink(destination: Text("Registration Form for \(event.title)")) {
-                    Text("Register Now")
-                        .font(.headline).fontWeight(.semibold)
-                        .frame(maxWidth: .infinity).padding()
-                        .background(Color.blue) // Use a different color to distinguish it
-                        .foregroundColor(.white).cornerRadius(10)
-                }
-                // Mark that we showed a button
-                let _ = { didShowPrimaryButton = true }()
-            }
-            // Case 3: NEITHER ticketing nor registration is ON
-            if !didShowPrimaryButton {
-                Text("Ticketing Closed")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.gray) // Use a distinct disabled color
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                // Show the "More Information" button as a fallback if a link exists
-                if let link = event.eventLink, let url = URL(string: link), !link.isEmpty {
-                    Button(action: {
-                        UIApplication.shared.open(url)
-                    }) {
-                        Text("More Information")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .frame(maxWidth: .infinity).padding()
-                            .background(Color.secondary.opacity(0.2))
-                            .foregroundColor(.primary)
-                            .cornerRadius(10)
+            // Case 1: This is an event that has tickets.
+            if event.showBuyTickets == true {
+                if event.isTktON == true {
+                    // And ticketing is currently open
+                    NavigationLink(destination: EventRegistrationView(event: event)) {
+                        Text("Purchase Tickets")
+                            .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
+                            .background(Color.orange).foregroundColor(.white).cornerRadius(10)
                     }
+                } else {
+                    // Or ticketing is currently closed
+                    Text("Ticketing Closed")
+                        .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
+                        .background(Color.gray).foregroundColor(.white).cornerRadius(10)
+                }
+            }
+            // Case 2: This is a non-ticketed, "Register Now" event (that does not have individual programs).
+            else if event.isRegON == true && !hasPrograms {
+                 NavigationLink(destination: Text("Registration Form for \(event.title)")) {
+                    Text("Register Now")
+                        .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
+                        .background(Color.blue).foregroundColor(.white).cornerRadius(10)
+                }
+            }
+            // Case 3: This is a non-ticketed event that is closed for registration (and has no programs).
+            else if !hasPrograms {
+                Text("Registration Closed")
+                    .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
+                    .background(Color.gray).foregroundColor(.white).cornerRadius(10)
+            }
+
+            // The "More Information" button can be shown as a universal fallback
+            if let link = event.eventLink, let url = URL(string: link), !link.isEmpty {
+                Button(action: { UIApplication.shared.open(url) }) {
+                    Text("More Information")
+                        .font(.subheadline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
+                        .background(Color.secondary.opacity(0.2)).foregroundColor(.primary).cornerRadius(10)
                 }
             }
         }
-        .padding(.top, 16)              
+        .padding(.top, 16)
     }
 }
 
 struct EventDetailView: View {
     let event: Event
-
+    
+    // State Object - Create an instance of the new ViewModel
+    @StateObject private var programsViewModel = EventProgramsViewModel()
+    @State private var programToRegister: EventProgram?
+    @State private var showLoginSheet = false
+    
     init(event: Event) {
         self.event = event
-
+        
         // ⚙️ Match the same orange nav‑bar styling as EventRegistrationView
         if #available(iOS 15.0, *) {
             let appearance = UINavigationBarAppearance()
@@ -308,21 +435,21 @@ struct EventDetailView: View {
         UINavigationBar.appearance().tintColor = .white
         UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = UIColor(Color.orange)
     }
-
+    
     var body: some View {
         ZStack(alignment: .top) {
             // Orange status‑bar wedge
             Color.orange
                 .ignoresSafeArea(edges: .top)
                 .frame(height: 56)
-
+            
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-
+                    
                     EventTitleCategoryView(title: event.title, categoryName: event.categoryName)
                     EventImageView(imageUrlString: event.imageUrl)
                     EventDetailsCardView(event: event)
-
+                    
                     // Card 1: For the plain text description
                     if let plainDesc = event.plainDescription, !plainDesc.isEmpty {
                         DescriptionCardView(title: "About This Event", content: plainDesc, isHTML: false)
@@ -332,16 +459,115 @@ struct EventDetailView: View {
                     if let htmlDesc = event.htmlDescription, !htmlDesc.isEmpty {
                         DescriptionCardView(title: "Additional Details", content: htmlDesc, isHTML: true)
                     }
-
-                    EventActionButtonsView(event: event)
+                    
+                    // Card 3: For Competitions and performances
+                    if programsViewModel.isLoading || !programsViewModel.programs.isEmpty {
+                        CompetitionsCardView(viewModel: programsViewModel, programToRegister: $programToRegister, showLoginSheet: $showLoginSheet)
+                    }
+                    
+                    EventActionButtonsView(event: event, hasPrograms: !programsViewModel.programs.isEmpty)
                 }
                 .padding()
                 .background(Color(.systemBackground))
             }
         }
+        
+        .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
+            // After login, if programToRegister is not nil, it means the user was trying to register.
+            // We set showLoginSheet to false and keep programToRegister set,
+            // which will automatically trigger the .sheet(item:...) modifier.
+            if self.programToRegister != nil {
+                print("Login successful, proceeding with registration flow.")
+                self.showLoginSheet = false // Dismiss the login sheet
+            }
+        }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginView()
+        }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
         .accentColor(.white)
+        .onAppear {
+            Task { await programsViewModel.loadPrograms(for: event.id) }
+        }
+        .sheet(item: $programToRegister) { program in
+            // This now gets triggered correctly after the login sheet is dismissed.
+            ProgramRegistrationView(event: event, program: program)
+        }
     }
 } // end of file
 
+// NEW HELPER VIEW: Add this at the bottom of the file for the flowing category tags.
+
+struct WrappingHStack<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
+    let id: KeyPath<Data.Element, Data.Element.ID>
+    let data: Data
+    let content: (Data.Element) -> Content
+    let alignment: HorizontalAlignment
+    let horizontalSpacing: CGFloat
+    let verticalSpacing: CGFloat
+    
+    @State private var totalHeight: CGFloat = .zero
+    
+    init(id: KeyPath<Data.Element, Data.Element.ID>, data: Data, alignment: HorizontalAlignment = .leading, horizontalSpacing: CGFloat = 8, verticalSpacing: CGFloat = 8, @ViewBuilder content: @escaping (Data.Element) -> Content) {
+        self.id = id
+        self.data = data
+        self.alignment = alignment
+        self.horizontalSpacing = horizontalSpacing
+        self.verticalSpacing = verticalSpacing
+        self.content = content
+    }
+    
+    var body: some View {
+        VStack {
+            GeometryReader { geometry in
+                self.generateContent(in: geometry)
+            }
+        }
+        .frame(height: totalHeight)
+    }
+    
+    private func generateContent(in g: GeometryProxy) -> some View {
+        var width = CGFloat.zero
+        var height = CGFloat.zero
+        
+        return ZStack(alignment: .topLeading) {
+            ForEach(data) { item in
+                self.content(item)
+                    .padding(.horizontal, horizontalSpacing / 2)
+                    .padding(.vertical, verticalSpacing / 2)
+                    .alignmentGuide(alignment, computeValue: { d in
+                        if (abs(width - d.width) > g.size.width) {
+                            width = 0
+                            height -= d.height
+                        }
+                        let result = width
+                        if item[keyPath: id] == self.data.last?[keyPath: id] {
+                            width = 0
+                        } else {
+                            width -= d.width
+                        }
+                        return result
+                    })
+                    .alignmentGuide(.top, computeValue: { d in
+                        let result = height
+                        if item[keyPath: id] == self.data.last?[keyPath: id] {
+                            height = 0
+                        }
+                        return result
+                    })
+            }
+        }
+        .background(viewHeightReader($totalHeight))
+    }
+    
+    private func viewHeightReader(_ binding: Binding<CGFloat>) -> some View {
+        return GeometryReader { geometry -> Color in
+            let rect = geometry.frame(in: .local)
+            DispatchQueue.main.async {
+                binding.wrappedValue = rect.size.height
+            }
+            return .clear
+        }
+    }
+} // End of File

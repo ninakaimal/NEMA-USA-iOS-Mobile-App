@@ -62,10 +62,12 @@ class EventRepository: ObservableObject {
                     // cdEvent.isTBD removed
                     cdEvent.isRegON = eventData.isRegON ?? false
                     cdEvent.isTktON = eventData.isTktON ?? false
+                    cdEvent.showBuyTickets = eventData.showBuyTickets ?? false
                     cdEvent.date = eventData.date
                     cdEvent.timeString = eventData.timeString
                     cdEvent.eventLink = eventData.eventLink
                     cdEvent.usesPanthi = eventData.usesPanthi ?? false
+                    cdEvent.showBuyTickets = eventData.showBuyTickets ?? false
                     cdEvent.lastUpdatedAt = eventData.lastUpdatedAt ?? Date()
                 }
             }
@@ -233,6 +235,62 @@ class EventRepository: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
+    func syncPrograms(forEventID eventID: String) async -> [EventProgram] {
+        print("[EventRepository] Syncing programs for event ID: \(eventID)")
+        do {
+            let fetchedPrograms = try await networkManager.fetchPrograms(forEventId: eventID)
+            print("[EventRepository] Fetched \(fetchedPrograms.count) programs for event \(eventID).")
+            
+            // Get the parent CDEvent object from Core Data
+            let eventFetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
+            eventFetchRequest.predicate = NSPredicate(format: "id == %@", eventID as NSString)
+            guard let parentEvent = try viewContext.fetch(eventFetchRequest).first else {
+                print("⚠️ [EventRepository] Event with ID \(eventID) not found. Cannot sync programs.")
+                return []
+            }
+            
+            // Clear old programs to ensure data is fresh
+            if let existingPrograms = parentEvent.programs as? Set<CDEventProgram> {
+                for program in existingPrograms {
+                    viewContext.delete(program)
+                }
+            }
+            
+            // Save the new programs and their categories to Core Data
+            for programData in fetchedPrograms {
+                let cdProgram = CDEventProgram(context: viewContext)
+                cdProgram.id = programData.id
+                cdProgram.name = programData.name
+                cdProgram.time = programData.time
+                cdProgram.rulesAndGuidelines = programData.rulesAndGuidelines
+                cdProgram.registrationStatus = programData.registrationStatus
+                
+                var categorySet = Set<CDProgramCategory>()
+                for categoryData in programData.categories {
+                    let cdCategory = CDProgramCategory(context: viewContext)
+                    cdCategory.id = Int64(categoryData.id)
+                    cdCategory.name = categoryData.name
+                    categorySet.insert(cdCategory)
+                }
+                cdProgram.categories = categorySet as NSSet
+                cdProgram.event = parentEvent
+            }
+            
+            if viewContext.hasChanges {
+                try viewContext.save()
+                print("✅ [EventRepository] Successfully synced programs for event ID: \(eventID)")
+            }
+            
+            // Return the freshly fetched data for immediate UI use
+            return fetchedPrograms
+            
+        } catch {
+            print("❌ [EventRepository] Error syncing programs for event \(eventID): \(error.localizedDescription)")
+            return [] // Return an empty array on error
+        }
+    }
+    
     // --- Method to load events from Core Data and publish them ---
     @MainActor
     func loadEventsFromCoreData(fetchLimit: Int = 30) async { // Add a parameter with a default
@@ -257,6 +315,7 @@ class EventRepository: ObservableObject {
                     imageUrl: cdEvent.imageUrl,
                     isRegON: cdEvent.isRegON,
                     isTktON: cdEvent.isTktON,
+                    showBuyTickets: cdEvent.showBuyTickets,
                     date: cdEvent.date,
                     timeString: cdEvent.timeString,
                     eventLink: cdEvent.eventLink,
