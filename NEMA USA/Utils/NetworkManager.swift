@@ -1303,6 +1303,111 @@ final class NetworkManager: NSObject {
             throw NetworkError.decodingError(error)
         }
     }
+    
+    func getEligibleParticipants(forProgramId programId: String) async throws -> [FamilyMember] {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            print("DEBUG: [getEligibleParticipants] JWT token is NIL. Throwing unauthenticated error.")
+            throw NetworkError.serverError("User not authenticated.")
+        }
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/programs/\(programId)/eligible-participants")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        print("🚀 [NetworkManager] Fetching eligible participants for program \(programId) from URL: \(url.absoluteString)")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            // ADD THESE DEBUG PRINTS (make sure they are not commented out):
+            if let httpResponse = response as? HTTPURLResponse {
+                print("DEBUG: [getEligibleParticipants] HTTP Status: \(httpResponse.statusCode)")
+                if let responseBody = String(data: data, encoding: .utf8) {
+                    print("DEBUG: [getEligibleParticipants] Response Body (first 500 chars): \(String(responseBody.prefix(500)))")
+                }
+            } else {
+                print("DEBUG: [getEligibleParticipants] Response is not HTTPURLResponse. Type: \(type(of: response))")
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
+                print("❌ [NetworkManager] getEligibleParticipants: HTTP Error. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). Body: \(errorBody)")
+                throw NetworkError.serverError("Failed to fetch eligible participants. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). Error Body: \(errorBody)")
+            }
+
+            let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
+            print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
+            // Optional: Print first few decoded participants for verification
+            for (index, member) in decodedParticipants.prefix(3).enumerated() {
+                print("   Participant \(index): ID=\(member.id), Name=\(member.name)")
+            }
+            return decodedParticipants
+        } catch {
+            print("❌ [NetworkManager] getEligibleParticipants: Caught decoding/network error: \(error)")
+            // Ensure that NetworkError.decodingError also has full details
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .typeMismatch(let type, let context):
+                    print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .valueNotFound(let type, let context):
+                    print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
+                case .keyNotFound(let key, let context):
+                    print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
+                case .dataCorrupted(let context):
+                    print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
+                @unknown default:
+                    print("Unknown decoding error.")
+                }
+                throw NetworkError.decodingError(error) // Re-throw the structured error
+            } else {
+                throw error // Re-throw other errors (e.g., URLSession errors)
+            }
+        }
+    }
+    
+    func registerForProgram(eventId: String, programId: String, participantIds: [Int], comments: String) async throws {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/events/\(eventId)/programs/\(programId)/register")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = [
+            "participant_ids": participantIds,
+            "comments": comments
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        print("🚀 [NetworkManager] Submitting registration for program \(programId) with participants \(participantIds)")
+
+        let (data, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("DEBUG: [registerForProgram] HTTP Status: \(httpResponse.statusCode)")
+            if let responseBody = String(data: data, encoding: .utf8) {
+                print("DEBUG: [registerForProgram] Response Body (first 500 chars): \(String(responseBody.prefix(500)))")
+            }
+        } else {
+            print("DEBUG: [registerForProgram] Response is not HTTPURLResponse. Type: \(type(of: response))")
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
+            print("❌ [NetworkManager] registerForProgram: HTTP Error. Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to submit registration. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        
+        // This line was causing a decoding error if the API doesn't return FamilyMember array for registration
+        // let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
+        print("✅ [NetworkManager] Successfully submitted registration for program \(programId).")
+    }
 
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(
