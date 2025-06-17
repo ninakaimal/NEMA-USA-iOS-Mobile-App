@@ -1306,6 +1306,7 @@ final class NetworkManager: NSObject {
 
     func getEligibleParticipants(forProgramId programId: String) async throws -> [FamilyMember] {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            print("DEBUG: [getEligibleParticipants] JWT token is NIL. Throwing unauthenticated error.")
             throw NetworkError.serverError("User not authenticated.")
         }
         
@@ -1318,6 +1319,15 @@ final class NetworkManager: NSObject {
         print("🚀 [NetworkManager] Fetching eligible participants for program \(programId)")
 
         let (data, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("DEBUG: [getEligibleParticipants] HTTP Status: \(httpResponse.statusCode)")
+            if let responseBody = String(data: data, encoding: .utf8) {
+                print("DEBUG: [getEligibleParticipants] Response Body (first 500 chars): \(String(responseBody.prefix(500)))")
+            }
+        } else {
+            print("DEBUG: [getEligibleParticipants] Response is not HTTPURLResponse. Type: \(type(of: response))")
+        }
 
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
@@ -1367,6 +1377,7 @@ final class NetworkManager: NSObject {
             throw NetworkError.serverError("Failed to submit registration. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
         }
         
+        let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
         print("✅ [NetworkManager] Successfully submitted registration for program \(programId).")
     }
     

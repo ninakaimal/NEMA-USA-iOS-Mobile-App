@@ -1190,4 +1190,4 @@ struct AccountView: View {
             }
         }
     }
-} // end of file
+}

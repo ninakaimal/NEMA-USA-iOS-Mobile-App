@@ -49,5 +49,4 @@ struct ContentView: View {
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
-}
-
+} // end of file

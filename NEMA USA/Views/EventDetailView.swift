@@ -481,15 +481,7 @@ struct EventDetailView: View {
                 self.showLoginSheet = false // Dismiss the login sheet
             }
         }
-        .sheet(isPresented: $showLoginSheet, onDismiss: {
-            // This code runs when the login sheet is dismissed.
-            // We check if the user is STILL not logged in (i.e., they cancelled).
-            if DatabaseManager.shared.jwtApiToken == nil {
-                // If they cancelled, we reset the registration intent to nil.
-                // This prevents the ProgramRegistrationView from appearing.
-                programToRegister = nil
-            }
-        }) {
+        .sheet(isPresented: $showLoginSheet) {
             LoginView()
         }
         .navigationTitle("Event Details")

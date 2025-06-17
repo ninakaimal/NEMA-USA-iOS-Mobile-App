@@ -112,4 +112,4 @@ private func configureNavigationBarAppearance() {
         navBar.titleTextAttributes      = [.foregroundColor: whiteColor]
         navBar.largeTitleTextAttributes = [.foregroundColor: whiteColor]
     }
-}
+} // end of file

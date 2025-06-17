@@ -161,4 +161,4 @@ struct ProgramRegistrationView: View {
             })
         }
     }
-}
+} // end of file

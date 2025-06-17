@@ -222,4 +222,4 @@ struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
         LoginView()
     }
-}
+} // end of file
