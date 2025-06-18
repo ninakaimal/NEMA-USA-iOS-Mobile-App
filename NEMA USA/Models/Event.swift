@@ -8,7 +8,7 @@
 // Event.swift
 import Foundation
 
-struct Event: Identifiable, Decodable, Hashable {
+struct Event: Identifiable, Codable, Hashable {
     let id: String
     let title: String
     let plainDescription: String?

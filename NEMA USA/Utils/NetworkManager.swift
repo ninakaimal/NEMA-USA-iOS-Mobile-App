@@ -1366,6 +1366,89 @@ final class NetworkManager: NSObject {
             }
         }
     }
+    func fetchPurchaseRecords(since: Date? = nil) async throws -> [PurchaseRecord] { // Add 'since' parameter
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+        
+        var urlComponents = URLComponents(url: baseURL.appendingPathComponent("v1/mobile/my-events"), resolvingAgainstBaseURL: false)!
+        
+        // If a 'since' date is provided, add it as a query parameter
+        if let sinceDate = since {
+            urlComponents.queryItems = [
+                URLQueryItem(name: "since", value: ISO8601DateFormatter().string(from: sinceDate))
+            ]
+        }
+        
+        guard let url = urlComponents.url else {
+            throw NetworkError.serverError("Could not create URL for records request.")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+            throw NetworkError.serverError("Failed to fetch records. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). \(errorBody)")
+        }
+
+        do {
+            return try self.iso8601JSONDecoder.decode([PurchaseRecord].self, from: data)
+        } catch {
+            print("❌ [NetworkManager] fetchPurchaseRecords: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    func fetchTicketRecordDetail(id: Int) async throws -> TicketPurchaseDetailResponse {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else { throw NetworkError.serverError("User not authenticated.") }
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/my-events/ticket/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError("Failed to fetch ticket details.")
+        }
+
+        do {
+            return try self.iso8601JSONDecoder.decode(TicketPurchaseDetailResponse.self, from: data)
+        } catch {
+            print("❌ [NetworkManager] fetchTicketRecordDetail: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    func fetchProgramRecordDetail(id: Int) async throws -> Participant {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else { throw NetworkError.serverError("User not authenticated.") }
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/my-events/program/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.serverError("Failed to fetch program details.")
+        }
+
+        do {
+            return try self.iso8601JSONDecoder.decode(Participant.self, from: data)
+        } catch {
+            print("❌ [NetworkManager] fetchProgramRecordDetail: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
     
     func registerForProgram(eventId: String, programId: String, participantIds: [Int], comments: String) async throws {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {

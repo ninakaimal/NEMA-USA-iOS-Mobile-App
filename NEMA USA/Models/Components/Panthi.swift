@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Panthi: Identifiable, Decodable, Hashable {
+struct Panthi: Identifiable, Codable, Hashable {
     let id: Int
     let name: String
     let description: String?

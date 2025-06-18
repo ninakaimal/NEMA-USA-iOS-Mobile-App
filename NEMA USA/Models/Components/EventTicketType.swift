@@ -6,7 +6,7 @@
 
 import Foundation
 
-struct EventTicketType: Identifiable, Decodable, Hashable {
+struct EventTicketType: Identifiable, Codable, Hashable {
     let id: Int
     let typeName: String
     let publicPrice: Double
@@ -17,9 +17,10 @@ struct EventTicketType: Identifiable, Decodable, Hashable {
     let currencyCode: String
     let isTicketTypeMemberExclusive: Bool? // True if this ticket type is ONLY for members
     let lastUpdatedAt: Date
+    let event: Event?
     
     enum CodingKeys: String, CodingKey {
-        case id
+        case id, event
         case typeName = "type_name"
         case publicPrice = "public_price"
         case memberPrice = "member_price"
