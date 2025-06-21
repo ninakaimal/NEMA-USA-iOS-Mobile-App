@@ -105,15 +105,17 @@ fileprivate struct EventImageView: View {
     var body: some View {
         if let imageUrlString = imageUrlString, let imageURL = URL(string: imageUrlString) {
             KFImage(imageURL)
+                .downsampling(size: CGSize(width: 1200, height: 1200))
                 .placeholder {
                     Image(placeholderImageName)
                         .resizable()
-                        .scaledToFit() // Changed from scaledToFill in placeholder to match original fallback
+                        .scaledToFit()
                         .frame(height: 200)
                         .background(Color.gray.opacity(0.1))
                         .clipped()
                         .cornerRadius(12)
                 }
+                .scaleFactor(UIScreen.main.scale)
                 .fade(duration: 0.25)
                 .resizable()
                 .scaledToFill()

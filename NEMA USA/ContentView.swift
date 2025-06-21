@@ -28,13 +28,13 @@ struct ContentView: View {
                         Image(systemName: "calendar")
                         Text("Calendar")
                     }
-
-                MyEventsView()
-                    .tag(2)
-                    .tabItem {
-                        Image(systemName: "list.bullet.clipboard.fill")
-                        Text("My Events")
-                    }
+// future feature
+//                MyEventsView()
+//                    .tag(2)
+//                    .tabItem {
+//                        Image(systemName: "list.bullet.clipboard.fill")
+//                        Text("My Events")
+//                    }
                 
                 AccountView()
                     .tag(2)

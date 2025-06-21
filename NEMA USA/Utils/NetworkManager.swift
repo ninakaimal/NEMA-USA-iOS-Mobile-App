@@ -360,7 +360,7 @@ final class NetworkManager: NSObject {
                 let doc   = try SwiftSoup.parse(html)
                 let token = try doc.select("input[name=_token]").first()?.attr("value") ?? ""
                 DispatchQueue.main.async {
-                    print("✅ fetched CSRF token:", token)
+                   // print("✅ fetched CSRF token:", token)
                     completion(.success(token))
                 }
             } catch {
@@ -1106,13 +1106,15 @@ final class NetworkManager: NSObject {
         let (data, response) = try await session.data(for: request) // Use your existing 'session'
         
         // DEBUG: Print raw JSON string for /events call
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("🎁 RAW JSON for /events (first ~2000 chars): \(String(jsonString.prefix(2000)))")
+        if String(data: data, encoding: .utf8) != nil {
+            // debug logging to disable for prod
+            //           print("🎁 RAW JSON for /events (first ~2000 chars): \(String(jsonString.prefix(2000)))")
             do {
-                let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]]
-                if let firstEventJSON = jsonArray?.first { // Log the first event object
-                    print("First Event Object from /events JSON: \(firstEventJSON)")
-                }
+                _ = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]]
+                // debug - disable in prod
+                //    if let firstEventJSON = jsonArray?.first { // Log the first event object
+             //       print("First Event Object from /events JSON: \(firstEventJSON)")
+             //   }
             } catch { print("Could not parse /events JSON for detailed first object print.") }
         }
         // END DEBUG
@@ -1142,15 +1144,16 @@ final class NetworkManager: NSObject {
             if fetchedEvents.isEmpty {
                 print("‼️ [NetworkManager.fetchEvents] Decoding Succeeded but produced an EMPTY array of Events.")
             } else {
-                print("✅ [NetworkManager.fetchEvents] Successfully decoded \(fetchedEvents.count) events.")
-                for (index, event) in fetchedEvents.prefix(5).enumerated() { // Log first 5 events
-                    print("   Event \(index): ID=\(event.id), Title='\(event.title)'")
-                    print("     imageUrl: \(event.imageUrl ?? "NIL in decoded Event struct")")
-                    print("     isRegON: \(String(describing: event.isRegON))") // Use String(describing:) for Bool?
-                    print("     usesPanthi: \(String(describing: event.usesPanthi))")
-                    print("     date: \(String(describing: event.date))")
-                    print("     lastUpdatedAt: \(String(describing: event.lastUpdatedAt))")
-                }
+               print("✅ [NetworkManager.fetchEvents] Successfully decoded \(fetchedEvents.count) events.")
+                // debug printing comment for prod
+            //    for (index, event) in fetchedEvents.prefix(5).enumerated() { // Log first 5 events
+             //       print("   Event \(index): ID=\(event.id), Title='\(event.title)'")
+            //        print("     imageUrl: \(event.imageUrl ?? "NIL in decoded Event struct")")
+            //        print("     isRegON: \(String(describing: event.isRegON))") // Use String(describing:) for Bool?
+            //        print("     usesPanthi: \(String(describing: event.usesPanthi))")
+            //        print("     date: \(String(describing: event.date))")
+            //        print("     lastUpdatedAt: \(String(describing: event.lastUpdatedAt))")
+            //    }
             }
             // <<< END DEBUG LOGGING >>>
             
@@ -1190,8 +1193,9 @@ final class NetworkManager: NSObject {
         let (data, response) = try await session.data(for: request)
         
         // DEBUG: Print raw JSON string for /events call
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("🎁 RAW JSON for /events (first ~1000-2000 chars): \(String(jsonString.prefix(2000)))") // Print a decent chunk
+        if String(data: data, encoding: .utf8) != nil {
+            // debug logging to disable for prod
+           // print("🎁 RAW JSON for /events (first ~1000-2000 chars): \(String(jsonString.prefix(2000)))") // Print a decent chunk
             // You can also try to print the first few parsed objects if the string is too long
             do {
                 let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]]
@@ -1254,8 +1258,9 @@ final class NetworkManager: NSObject {
         let (data, response) = try await session.data(for: request)
         
         // Optional: Add similar JSON logging here for Panthis if you encounter issues with it later
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("🎁 RAW JSON for /panthis (Event ID: \(eventId)): \(jsonString)")
+        if String(data: data, encoding: .utf8) != nil {
+            // debug logging to disable for prod
+            //  print("🎁 RAW JSON for /panthis (Event ID: \(eventId)): \(jsonString)")
          }
 
         guard let httpResponse = response as? HTTPURLResponse else {

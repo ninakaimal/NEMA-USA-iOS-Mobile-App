@@ -15,7 +15,9 @@ struct EventCard: View {
             let placeholderImageName = "DefaultEventImage" // Make sure this asset exists
 
             if let imageUrlString = event.imageUrl, let imageURL = URL(string: imageUrlString) {
+                let processor = DownsamplingImageProcessor(size: CGSize(width: 1200, height: 1200))
                 KFImage(imageURL)
+                    .setProcessor(processor)
                     .placeholder {
                         Image(placeholderImageName)
                             .resizable()

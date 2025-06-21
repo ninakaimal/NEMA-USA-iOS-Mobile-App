@@ -161,7 +161,7 @@ struct LoginView: View {
         
         // 1) Start spinner
         isLoading = true
-        print("🔄 [LoginView] Starting login for email: \(email)")
+        //print("🔄 [LoginView] Starting login for email: \(email)")
         
         // 2) Scrape Laravel login → get session + profile
         NetworkManager.shared.login(email: email, password: password) { scrapeResult in
