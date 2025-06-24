@@ -861,7 +861,47 @@ final class NetworkManager: NSObject {
         }
     }
     
+    func deleteAccount(completion: @escaping (Result<Void, NetworkError>) -> Void) {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.serverError("User not authenticated.")))
+        }
+        
+        // This URL must match the route you defined in your backend
+        let url = baseURL.appendingPathComponent("v1/user")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE" // Use the DELETE HTTP method
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
+        print("[NetworkManager] Sending request to delete user account.")
+
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("[NetworkManager] Delete account transport error: \(error.localizedDescription)")
+                    completion(.failure(.serverError(error.localizedDescription)))
+                    return
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    print("[NetworkManager] Delete account invalid response.")
+                    completion(.failure(.invalidResponse))
+                    return
+                }
+                
+                // A successful deletion can return 200 OK with a message, or 204 No Content.
+                if (200..<300).contains(httpResponse.statusCode) {
+                    print("[NetworkManager] Account successfully deleted on backend.")
+                    completion(.success(()))
+                } else {
+                    let errorBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                    print("[NetworkManager] Delete account failed with status \(httpResponse.statusCode). Body: \(errorBody)")
+                    completion(.failure(.serverError("Could not delete account. Server responded with status \(httpResponse.statusCode).")))
+                }
+            }
+        }.resume()
+    }
+    
     /// Adds a new family member using a form-POST to the /fmly_mmbr endpoint.
     func addNewFamilyMember(
         name: String,
@@ -1345,9 +1385,9 @@ final class NetworkManager: NSObject {
             let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
             print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
             // Optional: Print first few decoded participants for verification
-            for (index, member) in decodedParticipants.prefix(3).enumerated() {
-                print("   Participant \(index): ID=\(member.id), Name=\(member.name)")
-            }
+            // for (index, member) in decodedParticipants.prefix(3).enumerated() {
+            //    print("   Participant \(index): ID=\(member.id), Name=\(member.name)")
+            // }
             return decodedParticipants
         } catch {
             print("❌ [NetworkManager] getEligibleParticipants: Caught decoding/network error: \(error)")

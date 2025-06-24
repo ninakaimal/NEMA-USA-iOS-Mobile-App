@@ -483,7 +483,14 @@ struct EventDetailView: View {
                 self.showLoginSheet = false // Dismiss the login sheet
             }
         }
-        .sheet(isPresented: $showLoginSheet) {
+        .sheet(isPresented: $showLoginSheet, onDismiss: {
+            // This code runs when the LoginView is dismissed. We check if the user is STILL not logged in.
+            if DatabaseManager.shared.jwtApiToken == nil {
+                // If they aren't logged in, it means they cancelled. We must reset the state to cancel the registration flow.
+                print("[EventDetailView] Login sheet dismissed without login. Cancelling registration flow.")
+                self.programToRegister = nil
+            }
+        }) {
             LoginView()
         }
         .navigationTitle("Event Details")

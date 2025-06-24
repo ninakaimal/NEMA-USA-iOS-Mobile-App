@@ -1,11 +1,12 @@
-    //
-    //  AccountView.swift
-    //  NEMA USA
-    //  Created by Arjun on 4/15/25.
-    //  Updated by Sajith on 4/23/25
-    //  Updated by Arjun on 5/05/25 to switch to nemausa.org
+//
+//  AccountView.swift
+//  NEMA USA
+//
+//  Created by Arjun on 4/15/25.
+//  Updated by Sajith on 4/23/25
+//  Updated by Arjun on 5/05/25 to switch to nemausa.org
 
-    import SwiftUI
+import SwiftUI
 
 struct AccountView: View {
     @AppStorage("laravelSessionToken") private var authToken: String?
@@ -15,23 +16,25 @@ struct AccountView: View {
     @State private var family: [FamilyMember] = []
     @State private var isEditingProfile = false
     @State private var isEditingFamily  = false
-    @State private var editName        = ""
-    @State private var editPhone       = ""
-    @State private var editAddress     = ""
-    @State private var isUpdating      = false
-    @State private var showErrorAlert  = false
+    @State private var editName         = ""
+    @State private var editPhone        = ""
+    @State private var editAddress      = ""
+    @State private var isUpdating       = false
+    @State private var showErrorAlert   = false
     @State private var updateErrorMessage = ""
     @State private var isLoadingFamily = false
     @State private var showLogoutConfirmation = false
+    @State private var showingDeleteConfirmation = false
+    @State private var deleteConfirmationText = ""
     
     @State private var membershipId: Int?
     @State private var membershipOptions: [MobileMembershipPackage] = []
     @State private var selectedPackageIndex = 2 // default to 5 years
-    @State private var showingRenewSheet     = false
-    @State private var approvalURL: URL?      = nil
-    @State private var showPaymentError      = false
-    @State private var paymentErrorMessage   = ""
-    @State private var showPurchaseSuccess   = false
+    @State private var showingRenewSheet      = false
+    @State private var approvalURL: URL?       = nil
+    @State private var showPaymentError       = false
+    @State private var paymentErrorMessage    = ""
+    @State private var showPurchaseSuccess    = false
     @State private var currentActionIsRenewal: Bool = false // Tracks if the action is renewal or new
     @State private var paymentDataFromPayPal: PaymentConfirmationResponse? // Holds response from PayPalView
     
@@ -190,38 +193,15 @@ struct AccountView: View {
         return formatter
     }()
     
+    // MARK: CHANGE START
+    // The compiler error "unable to type-check this expression in reasonable time" occurs when a
+    // view's body is too complex. To fix this, we break the body into smaller computed properties.
+    // The main `body` now contains the NavigationView and its top-level modifiers.
+    // The content that was previously inside the NavigationView is moved to `accountContent`.
+    
     var body: some View {
         NavigationView {
-            contentView
-                .navigationBarTitle("My Account", displayMode: .inline)
-                .navigationBarItems(trailing: toolbarButtons)
-                .alert("Update Failed", isPresented: $showErrorAlert) {
-                    Button("OK", role: .cancel) { }
-                } message: {
-                    Text(updateErrorMessage)
-                }
-                .alert(isPresented: $showLogoutConfirmation) {
-                    Alert(
-                        title: Text("Logout"),
-                        message: Text("Are you sure you want to log out?"),
-                        primaryButton: .destructive(Text("Logout")) {
-                            performLogout()
-                        },
-                        secondaryButton: .cancel()
-                    )
-                }
-            // MARK: - ADD THIS ALERT MODIFIER FOR DELETE CONFIRMATION
-                .alert("Confirm Deletion", isPresented: $showDeleteFamilyMemberConfirmation, presenting: familyMemberToDelete) { memberToDeleteDetails in
-                    // 'memberToDeleteDetails' is the non-nil 'familyMemberToDelete' passed to the alert
-                    Button("Delete \(memberToDeleteDetails.name)", role: .destructive) {
-                        confirmAndDeleteFamilyMember() // Call your action function
-                    }
-                    Button("Cancel", role: .cancel) {
-                        self.familyMemberToDelete = nil // Important: Clear selection if user cancels
-                    }
-                } message: { memberToDeleteDetails in
-                    Text("Are you sure you want to delete \(memberToDeleteDetails.name)? This action cannot be undone.")
-                }
+            accountContent // Extracted content view to resolve compiler issue.
         }
         .sheet(item: $approvalURL, onDismiss: {
             approvalURL = nil
@@ -280,6 +260,68 @@ struct AccountView: View {
         }
     }
     
+    /// This private computed property contains the main view content and its direct modifiers (alerts, sheets).
+    /// Breaking this out from the main `body` helps the compiler type-check the expression in reasonable time.
+    private var accountContent: some View {
+        contentView
+            .navigationBarTitle("My Account", displayMode: .inline)
+            .navigationBarItems(trailing: toolbarButtons)
+            .alert("Update Failed", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(updateErrorMessage)
+            }
+            .alert(isPresented: $showLogoutConfirmation) {
+                Alert(
+                    title: Text("Logout"),
+                    message: Text("Are you sure you want to log out?"),
+                    primaryButton: .destructive(Text("Logout")) {
+                        performLogout()
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+        // MARK: - ADD THIS ALERT MODIFIER FOR DELETE CONFIRMATION
+            .alert("Confirm Deletion", isPresented: $showDeleteFamilyMemberConfirmation, presenting: familyMemberToDelete) { memberToDeleteDetails in
+                // 'memberToDeleteDetails' is the non-nil 'familyMemberToDelete' passed to the alert
+                Button("Delete \(memberToDeleteDetails.name)", role: .destructive) {
+                    confirmAndDeleteFamilyMember() // Call your action function
+                }
+                Button("Cancel", role: .cancel) {
+                    self.familyMemberToDelete = nil // Important: Clear selection if user cancels
+                }
+            } message: { memberToDeleteDetails in
+                Text("Are you sure you want to delete \(memberToDeleteDetails.name)? This action cannot be undone.")
+            }
+        
+            .alert("Delete Account?", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete Permanently", role: .destructive, action: initiateAccountDeletion)
+            } message: {
+                Text("Are you sure you want to delete your account? This action is permanent and cannot be undone. All your profile, family, and registration data will be erased.")
+            }
+        
+            .sheet(isPresented: $showingDeleteConfirmation) {
+                // We check the iOS version first
+                if #available(iOS 16.0, *) {
+                    // If it's iOS 16+, we show the sheet and apply the modifier
+                    DeleteConfirmationSheetView(
+                        isPresented: $showingDeleteConfirmation,
+                        confirmationText: $deleteConfirmationText,
+                        onConfirm: initiateAccountDeletion
+                    )
+                    .presentationDetents([.medium]) // Now correctly attached to the view
+                } else {
+                    // For older iOS versions, we show the sheet without the modifier
+                    DeleteConfirmationSheetView(
+                        isPresented: $showingDeleteConfirmation,
+                        confirmationText: $deleteConfirmationText,
+                        onConfirm: initiateAccountDeletion
+                    )
+                }
+            }
+    }
+    // MARK: CHANGE END
     
     @ViewBuilder
     private var contentView: some View {
@@ -333,6 +375,33 @@ struct AccountView: View {
                 VStack(spacing: 24) {
                     profileCard(profileData: profileData)
                     familySection
+                    
+                    VStack(spacing: 15) {
+                        Text("Account Management")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Log Out Button (This remains unchanged)
+                        Button(role: .destructive, action: { showLogoutConfirmation = true }) {
+                            Text("Log Out")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.gray.opacity(0.2))
+                                .foregroundColor(.primary)
+                                .cornerRadius(10)
+                        }
+                        
+                        // Required "Delete Account" button with new, subtle style
+                        Button("Delete Account", role: .destructive, action: {
+                            deleteConfirmationText = "" // Reset text field before showing sheet
+                            showingDeleteConfirmation = true
+                        })
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                        .padding(.top, 5) // Adds a little space above it
+                    }
+                    .padding() // Apply padding to the whole management section
                     Spacer(minLength: 32)
                 }
                 .padding(.vertical)
@@ -421,15 +490,15 @@ struct AccountView: View {
                             PaymentManager.shared.createOrder(
                                 amount: "\(Int(pkg.amount))",
                                 eventTitle: itemTitleForMembership,  // Use 'eventTitle' as per your PaymentManager.swift
-                                eventID: nil,                       // No eventID for membership
+                                eventID: nil,                         // No eventID for membership
                                 email: profileData.email,
                                 name: profileData.name,
                                 phone: profileData.phone,
                                 membershipType: effectiveMembershipType, // Use 'membershipType' as per your PaymentManager.swift
                                 packageId: pkg.id,
                                 packageYears: pkg.years_of_validity,
-                                userId: profileData.id,             // This is users.id
-                                panthiId: nil,                      // No panthiId for membership
+                                userId: profileData.id,               // This is users.id
+                                panthiId: nil,                        // No panthiId for membership
                                 //  lineItems: nil, // Not passing lineItems for membership
                                 completion: { result in
                                     DispatchQueue.main.async {
@@ -521,10 +590,10 @@ struct AccountView: View {
                         .foregroundColor(.orange)
                     } else {
                         Button("Manage Family") { // This was "Edit" before
-                           isEditingFamily = true
-                           isEditingProfile = false
-                       }.foregroundColor(.orange)
-                   }
+                            isEditingFamily = true
+                            isEditingProfile = false
+                        }.foregroundColor(.orange)
+                    }
                 }
             }
             .padding(.horizontal)
@@ -662,6 +731,29 @@ struct AccountView: View {
     
     // MARK: – Actions
     
+    private func initiateAccountDeletion() {
+        // Dismiss the confirmation sheet immediately
+        showingDeleteConfirmation = false
+        isUpdating = true // Show a loading indicator using your existing state variable
+        
+        NetworkManager.shared.deleteAccount { result in
+            DispatchQueue.main.async {
+                isUpdating = false
+                switch result {
+                case .success:
+                    // On successful deletion from the server, log the user out of the app.
+                    print("Account deletion successful, logging out.")
+                    self.performLogout()
+                    
+                case .failure(let error):
+                    // If deletion fails, show an error to the user.
+                    self.updateErrorMessage = "Could not delete account. \(error.localizedDescription)"
+                    self.showErrorAlert = true
+                }
+            }
+        }
+    }
+    
     private func performLogout() {
         DatabaseManager.shared.clearSession()
         authToken = nil; profile = nil; family = []; cachedExpiryRaw = nil; userId = 0
@@ -715,6 +807,7 @@ struct AccountView: View {
         }
     }
     
+   
 
     
     // MARK: - Helper funcitons to parse current DOB
@@ -1083,11 +1176,11 @@ struct AccountView: View {
                 case .failure(let error):
                     var errorMessageToShow = "Could not delete \(memberToDelete.name)."
                     if let networkErr = error as? NetworkError {
-                         switch networkErr {
-                         case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
-                         case .invalidResponse: errorMessageToShow += " Invalid server response."
-                         case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
-                         }
+                          switch networkErr {
+                          case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
+                          case .invalidResponse: errorMessageToShow += " Invalid server response."
+                          case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
+                          }
                     } else {
                         errorMessageToShow += " Specific error: \(error.localizedDescription)"
                     }
@@ -1132,11 +1225,11 @@ struct AccountView: View {
                 case .failure(let error):
                     var errorMessageToShow = "Could not add \(memberData.name)."
                     if let networkErr = error as? NetworkError {
-                         switch networkErr {
-                         case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
-                         case .invalidResponse: errorMessageToShow += " Invalid server response."
-                         case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
-                         }
+                          switch networkErr {
+                          case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
+                          case .invalidResponse: errorMessageToShow += " Invalid server response."
+                          case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
+                          }
                     } else {
                         errorMessageToShow += " Specific error: \(error.localizedDescription)"
                     }
@@ -1189,5 +1282,61 @@ struct AccountView: View {
                 }
             }
         }
+    }
+}
+
+fileprivate struct DeleteConfirmationSheetView: View {
+    @Binding var isPresented: Bool
+    @Binding var confirmationText: String
+    var onConfirm: () -> Void
+    
+    // Disables button until user types "DELETE"
+    private var isConfirmed: Bool {
+        confirmationText.trimmingCharacters(in: .whitespaces) == "DELETE"
+    }
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Content
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(.red)
+                
+                Text("Are You Absolutely Sure?")
+                    .font(.title2).bold()
+                
+                Text("This action is permanent and cannot be undone. All of your profile details, family members, registrations, and ticket history will be erased forever.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                TextField("Type DELETE to confirm", text: $confirmationText)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .autocapitalization(.allCharacters)
+                    .disableAutocorrection(true)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                
+                Button(action: {
+                    if isConfirmed {
+                        onConfirm()
+                    }
+                }) {
+                    Text("Delete My Account Permanently")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(isConfirmed ? Color.red : Color.gray)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .disabled(!isConfirmed)
+                .animation(.default, value: isConfirmed)
+            }
+            Spacer()
+        }
+        .padding()
     }
 }

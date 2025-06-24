@@ -17,8 +17,6 @@ struct RegistrationView: View {
     @State private var password        = ""
     @State private var confirmPassword = ""
     @State private var address         = ""
-    @State private var spouseName      = ""
-    @State private var spouseEmail     = ""
     
     // Optional membership selection
     @State private var membershipOptions: [MobileMembershipPackage] = []
@@ -59,7 +57,7 @@ struct RegistrationView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange, lineWidth: 0.5))
                 .padding(.horizontal)
             if !phoneValid {
-                Text("Phone number is required")
+                Text("Phone (Optional)")
                     .foregroundColor(.orange).font(.caption).padding(.horizontal)
             }
         }
@@ -153,7 +151,7 @@ struct RegistrationView: View {
                 .padding(.horizontal)
 
             if !addressValid {
-                Text("Address is required")
+                Text("Address (Optional)")
                     .foregroundColor(.orange).font(.caption).padding(.horizontal)
             }
         }
@@ -176,25 +174,6 @@ struct RegistrationView: View {
                     passwordField
                     confirmPasswordField
                     addressField
-                }
-                // MARK: – Spouse info (optional)
-                Group {
-                    TextField("Spouse Name", text: $spouseName)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .padding(10)
-                        .background(Color(.systemBackground))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange, lineWidth: 0.5))
-                        .padding(.horizontal)
-                    
-                    TextField("Spouse Email", text: $spouseEmail)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .padding(10)
-                        .background(Color(.systemBackground))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange, lineWidth: 0.5))
-                        .padding(.horizontal)
                 }
                 
                 // MARK: – Informational text
@@ -256,15 +235,16 @@ struct RegistrationView: View {
     // MARK: – Form validation
     
     private var nameValid: Bool { !name.isEmpty }
-    private var phoneValid: Bool { !phone.isEmpty }
+    // Please note - we heavily depend on phone numbers to co-ordinate competition readiness for events. This is key to delivering an on-time and conflict / error free community service. Having said that, given the feedback from Apple, Phone is now always considered valid (optional)
+    private var phoneValid: Bool { true }
     private var emailValid: Bool { isValidEmail }
     private var emailMatch: Bool { email == confirmEmail && !confirmEmail.isEmpty }
     private var passwordValid: Bool { !password.isEmpty && password.count >= 6 }
     private var passwordMatch: Bool { password == confirmPassword && !confirmPassword.isEmpty }
-    private var addressValid: Bool { !address.isEmpty }
+    private var addressValid: Bool { true } // Given the feedback from Apple, Address is now always considered valid (optional)
     
     private var isFormValid: Bool {
-        nameValid && phoneValid && emailValid && emailMatch && passwordValid && passwordMatch && addressValid
+        nameValid && emailValid && emailMatch && passwordValid && passwordMatch
     }
     
     private func loadPackages() {
@@ -296,8 +276,8 @@ struct RegistrationView: View {
             confirmPassword: confirmPassword,
             dateOfBirth: "",
             address: address,
-            spouseName: spouseName.isEmpty ? nil : spouseName,
-            spouseEmail: spouseEmail.isEmpty ? nil : spouseEmail,
+            spouseName: nil,
+            spouseEmail: nil,
             spouseDob: nil,
             joinAsMember: wantsMembership,
             selectedMembershipId: selectedMembershipId,
