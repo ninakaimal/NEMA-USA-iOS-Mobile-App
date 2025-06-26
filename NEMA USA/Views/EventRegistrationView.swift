@@ -396,7 +396,7 @@ struct EventRegistrationView: View {
     }
     
     private var purchaseButton: some View {
-        if event.isTktON ?? false {
+        if event.isRegON ?? false {
             let canProceed = viewModel.canProceedToPurchase(
                 acceptedTerms: acceptedTerms,
                 eventUsesPanthi: event.usesPanthi ?? false,
@@ -429,7 +429,7 @@ struct EventRegistrationView: View {
     }   else {
         // --- If Registration is OFF, show a disabled "Tickets Closed" button ---
         return AnyView(
-            Text("Tickets Closed")
+            Text("Ticketing Closed")
                 .font(.headline)
                 .fontWeight(.bold)
                 .foregroundColor(.white)

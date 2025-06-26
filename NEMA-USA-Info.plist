@@ -26,7 +26,10 @@
 
     <!-- Notification permission text -->
     <key>NSUserNotificationUsageDescription</key>
-    <string>We’d like to send you event reminders and NEMA updates.</string>
+    <string>We’d like to send you event reminders, event timing or location changes and NEMA program updates.</string>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>We need your location to provide directions to event venues in your preferred maps app.</string>
 
     <!-- Disable for Prod - App Transport Security: allow HTTP to your API hosts -->
     <!-- <key>NSAppTransportSecurity</key>
@@ -54,6 +57,7 @@
         </dict>
     </dict>
     -->
+
     <!-- Custom URL scheme for PayPal return -->
     <key>CFBundleURLTypes</key>
     <array>

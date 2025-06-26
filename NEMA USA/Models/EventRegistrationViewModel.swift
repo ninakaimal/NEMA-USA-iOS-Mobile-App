@@ -46,7 +46,7 @@ class EventRegistrationViewModel: ObservableObject {
         self.ticketQuantities = [:]
         self.selectedPanthiId = nil
 
-        print("🚀 [EventRegVM] Loading prerequisites for event: \(event.title) (ID: \(event.id))")
+//        print("🚀 [EventRegVM] Loading prerequisites for event: \(event.title) (ID: \(event.id))")
 
         do {
             // --- Sync and Fetch Ticket Types ---

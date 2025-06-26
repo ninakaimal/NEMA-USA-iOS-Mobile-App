@@ -164,7 +164,7 @@ final class PaymentManager: NSObject {
                 // ** Add line_items if it's a ticket purchase and lineItems are provided **
                 if let lineItems = lineItems, !lineItems.isEmpty {
                     payload["line_items"] = lineItems // This should be an array of dictionaries
-                    print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
+ //                   print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
                 } else {
                     print("⚠️ [PaymentManager] line_items not provided or empty for ticket purchase type.")
                 }

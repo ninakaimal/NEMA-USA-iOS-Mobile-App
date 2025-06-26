@@ -59,14 +59,14 @@ struct PayPalView: UIViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
-            print("🔍 WebView navigating to URL:", url.absoluteString)
+ //           print("🔍 WebView navigating to URL:", url.absoluteString)
             
             if url.host?.contains("nemausa.org") == true,
                let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let paymentId = comps.queryItems?.first(where: { $0.name == "paymentId" })?.value,
                let payerId = comps.queryItems?.first(where: { $0.name == "PayerID" })?.value {
 
-                print("✅ Detected PayPal payment callback. PaymentId: \(paymentId), PayerID: \(payerId)")
+ //               print("✅ Detected PayPal payment callback. PaymentId: \(paymentId), PayerID: \(payerId)")
                 
                 // 🔥 Pass the dynamically navigated URL here!
                 confirmPaymentOnBackend(
@@ -178,7 +178,7 @@ struct PayPalView: UIViewRepresentable {
                          let confirmationResponse = try decoder.decode(PaymentConfirmationResponse.self, from: responseData)
                          
                          DispatchQueue.main.async {
-                             print("✅ [PayPalView.confirmPayment] Payment captured successfully (HTTP \(httpResponse.statusCode)). Parsed: \(confirmationResponse)")
+   //                          print("✅ [PayPalView.confirmPayment] Payment captured successfully (HTTP \(httpResponse.statusCode)). Parsed: \(confirmationResponse)")
                              self.parent.paymentConfirmationData = confirmationResponse // Update the binding
                              self.parent.showPurchaseSuccess = true
                          }

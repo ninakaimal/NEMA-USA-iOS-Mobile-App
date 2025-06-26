@@ -48,7 +48,15 @@ class EventRepository: ObservableObject {
                 let validCDEvents = existingCDEventsArray.filter { $0.id != nil && !$0.id!.isEmpty }
                 let existingCDEventsDict = Dictionary(uniqueKeysWithValues: validCDEvents.map { ($0.id!, $0) })
 
-                for eventData in fetchedEventsData { // <<<<<<<< CORRECTLY USES fetchedEventsData
+                for eventData in fetchedEventsData {
+ //                   // --- ADD THIS LOGGING BLOCK TO CHECK DECODED DATA ---
+//                    if eventData.id == "216" {
+//                        print("--- SWIFT DECODED DATA CHECK FOR ONAM EVENT (ID 216) ---")
+//                        print("Value of eventData.isTktON: \(String(describing: eventData.isTktON))")
+//                        print("Value of eventData.showBuyTickets: \(String(describing: eventData.showBuyTickets))")
+  //                      print("--------------------------------------------------")
+    //                }
+      //              // --- END LOGGING BLOCK ---
                     let cdEvent = existingCDEventsDict[eventData.id] ?? CDEvent(context: viewContext)
                     // ... (mapping properties) ...
                     cdEvent.id = eventData.id // Ensure id is set for new objects too
@@ -115,7 +123,7 @@ class EventRepository: ObservableObject {
         // ... (Ensure to call loadEventsFromCoreData() or a more targeted update if needed) ...
         guard !isLoading else { return }
         isLoading = true
-        print("[EventRepository] Syncing ticket types for event ID: \(eventID)")
+//        print("[EventRepository] Syncing ticket types for event ID: \(eventID)")
         do {
             let fetchedTicketTypes = try await networkManager.fetchTicketTypes(forEventId: eventID)
             print("[EventRepository] Fetched \(fetchedTicketTypes.count) ticket types for event \(eventID).")

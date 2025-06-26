@@ -365,39 +365,39 @@ fileprivate struct EventActionButtonsView: View {
     let hasPrograms: Bool
     
     var body: some View {
+        //let _ = print("DEBUG: Checking button for event '\(event.title)'. showBuyTickets=\(event.showBuyTickets ?? false), isTktON=\(event.isTktON ?? false)")
         VStack(spacing: 15) {
-            // Case 1: This is an event that has tickets.
             if event.showBuyTickets == true {
-                if event.isTktON == true {
-                    // And ticketing is currently open
+                if event.isRegON == true {
+                    // Case 1A: Ticketing is ON. Show the "Purchase Tickets" button.
                     NavigationLink(destination: EventRegistrationView(event: event)) {
                         Text("Purchase Tickets")
                             .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
                             .background(Color.orange).foregroundColor(.white).cornerRadius(10)
                     }
                 } else {
-                    // Or ticketing is currently closed
+                    // Case 1B: Ticketing is OFF. Show the "Ticketing Closed" button.
                     Text("Ticketing Closed")
                         .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
                         .background(Color.gray).foregroundColor(.white).cornerRadius(10)
                 }
             }
-            // Case 2: This is a non-ticketed, "Register Now" event (that does not have individual programs).
+            // Case 2: This is a non-ticketed, "Register Now" event.
             else if event.isRegON == true && !hasPrograms {
-                 NavigationLink(destination: Text("Registration Form for \(event.title)")) {
+                NavigationLink(destination: Text("Registration Form for \(event.title)")) {
                     Text("Register Now")
                         .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
                         .background(Color.blue).foregroundColor(.white).cornerRadius(10)
                 }
             }
-            // Case 3: This is a non-ticketed event that is closed for registration (and has no programs).
+            // Case 3: This is a non-ticketed event that is closed for registration.
             else if !hasPrograms {
                 Text("Registration Closed")
                     .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
                     .background(Color.gray).foregroundColor(.white).cornerRadius(10)
             }
 
-            // The "More Information" button can be shown as a universal fallback
+            // The "More Information" button
             if let link = event.eventLink, let url = URL(string: link), !link.isEmpty {
                 Button(action: { UIApplication.shared.open(url) }) {
                     Text("More Information")

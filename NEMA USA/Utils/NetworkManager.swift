@@ -1145,6 +1145,14 @@ final class NetworkManager: NSObject {
 
         let (data, response) = try await session.data(for: request) // Use your existing 'session'
         
+ //       // --- ADD THIS LOGGING BLOCK TO SEE THE RAW JSON ---
+ //       if let jsonString = String(data: data, encoding: .utf8) {
+ //           print("--- RAW JSON RESPONSE for /v1/mobile/events ---")
+ //           print(jsonString)
+ //           print("--- END RAW JSON RESPONSE ---")
+ //       }
+ //       // --- END LOGGING BLOCK ---
+        
         // DEBUG: Print raw JSON string for /events call
         if String(data: data, encoding: .utf8) != nil {
             // debug logging to disable for prod
@@ -1228,7 +1236,7 @@ final class NetworkManager: NSObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         // Add JWT token if required
 
-        print("🚀 [NetworkManager] Fetching ticket types for event \(eventId) from: \(url.absoluteString)")
+ //       print("🚀 [NetworkManager] Fetching ticket types for event \(eventId) from: \(url.absoluteString)")
 
         let (data, response) = try await session.data(for: request)
         
@@ -1331,7 +1339,7 @@ final class NetworkManager: NSObject {
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Accept")
 
-        print("🚀 [NetworkManager] Fetching programs for event \(eventId) from: \(url.absoluteString)")
+//        print("🚀 [NetworkManager] Fetching programs for event \(eventId) from: \(url.absoluteString)")
 
         let (data, response) = try await session.data(for: request)
         
