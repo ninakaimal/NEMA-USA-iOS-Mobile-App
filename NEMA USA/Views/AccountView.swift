@@ -325,7 +325,7 @@ struct AccountView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if authToken == nil {
+        if DatabaseManager.shared.jwtApiToken == nil || authToken == nil {
             LoginView()
         } else if profile == nil && !isUpdating {
             ProgressView("Loading Account…")

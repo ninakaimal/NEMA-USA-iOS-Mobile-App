@@ -80,6 +80,30 @@ class EventRepository: ObservableObject {
                 }
             }
             
+            // Remove events that are no longer returned by the API (i.e., show_in_events = 0)
+            if forceFullSync || lastSyncTimestamp == nil {
+                // On full sync, remove events not in the current API response
+                let currentEventIds = Set(fetchedEventsData.map { $0.id })
+                let allLocalEventsFetch: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
+                
+                do {
+                    let allLocalEvents = try viewContext.fetch(allLocalEventsFetch)
+                    let eventsToRemove = allLocalEvents.filter { cdEvent in
+                        guard let eventId = cdEvent.id else { return true } // Remove events with no ID
+                        return !currentEventIds.contains(eventId) // Remove if not in current API response
+                    }
+                    
+                    if !eventsToRemove.isEmpty {
+                        print("[EventRepository] Removing \(eventsToRemove.count) events that are no longer shown (show_in_events = 0)")
+                        for eventToRemove in eventsToRemove {
+                            viewContext.delete(eventToRemove)
+                        }
+                    }
+                } catch {
+                    print("⚠️ [EventRepository] Error fetching local events for cleanup: \(error)")
+                }
+            }
+            
             // Handle Deletions (simplified for now if deletedEventIds isn't fully supported by API yet)
             if !deletedEventIds.isEmpty {
                 let deleteFetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()

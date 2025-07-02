@@ -6,56 +6,61 @@
 
 import Foundation
 
-// Model for the main list view in "My Events"
-struct PurchaseRecord: Codable, Identifiable, Hashable {
-    var id: String { recordId }
+struct PurchaseRecord: Identifiable, Codable, Hashable {
     let recordId: String
-    let type: String
+    let type: String // "Ticket Purchase" or "Program Registration"
     let purchaseDate: Date
-    let eventDate: Date? // Used for sorting and segmentation
+    let eventDate: Date?
     let eventName: String
     let title: String
     let displayAmount: String
     let status: String
     let detailId: Int
-}
-
-// Model for the Ticket Purchase Detail View response
-struct TicketPurchaseDetailResponse: Codable {
-    let purchase: TicketPurchase
-    let pdfUrl: String?
-
+    
+    var id: String { recordId }
+    
     enum CodingKeys: String, CodingKey {
-        case purchase
-        case pdfUrl = "pdf_url"
+        case recordId, type, eventName, title, status
+        case purchaseDate = "purchaseDate"
+        case eventDate = "eventDate"
+        case displayAmount = "displayAmount"
+        case detailId = "detailId"
     }
-}
-
-// Represents a ticket purchase transaction
-struct TicketPurchase: Codable {
-    let id: Int
-    let name: String
-    let email: String
-    let phone: String
-    let totalAmount: String
-    let details: [TicketPurchaseDetailItem]
-    let panthi: Panthi?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, email, phone, details, panthi
-        case totalAmount = "total_amount"
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        recordId = try container.decode(String.self, forKey: .recordId)
+        type = try container.decode(String.self, forKey: .type)
+        eventName = try container.decode(String.self, forKey: .eventName)
+        title = try container.decode(String.self, forKey: .title)
+        displayAmount = try container.decode(String.self, forKey: .displayAmount)
+        status = try container.decode(String.self, forKey: .status)
+        detailId = try container.decode(Int.self, forKey: .detailId)
+        
+        // Parse dates using ISO8601 format
+        let purchaseDateString = try container.decode(String.self, forKey: .purchaseDate)
+        let eventDateString = try container.decodeIfPresent(String.self, forKey: .eventDate)
+        
+        let formatter = ISO8601DateFormatter()
+        guard let parsedPurchaseDate = formatter.date(from: purchaseDateString) else {
+            throw DecodingError.dataCorruptedError(forKey: .purchaseDate, in: container, debugDescription: "Invalid date format")
+        }
+        
+        purchaseDate = parsedPurchaseDate
+        eventDate = eventDateString.flatMap { formatter.date(from: $0) }
     }
-}
-
-// Represents a line item within a ticket purchase
-struct TicketPurchaseDetailItem: Codable, Identifiable {
-    var id: Int { ticketType.id }
-    let no: Int // quantity
-    let amount: String // The stored price per item
-    let ticketType: EventTicketType
-
-    enum CodingKeys: String, CodingKey {
-        case no, amount
-        case ticketType = "ticket_type"
+    
+    // Manual initializer for Core Data mapping
+    init(recordId: String, type: String, purchaseDate: Date, eventDate: Date?, eventName: String, title: String, displayAmount: String, status: String, detailId: Int) {
+        self.recordId = recordId
+        self.type = type
+        self.purchaseDate = purchaseDate
+        self.eventDate = eventDate
+        self.eventName = eventName
+        self.title = title
+        self.displayAmount = displayAmount
+        self.status = status
+        self.detailId = detailId
     }
 }

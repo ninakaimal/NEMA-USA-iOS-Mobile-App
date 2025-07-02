@@ -150,6 +150,19 @@ struct EventRegistrationView: View {
                 await viewModel.loadPrerequisites(for: event)
                 loadMemberInfo() // Load/pre-fill user info once
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                DispatchQueue.main.async {
+                    loadMemberInfo()
+                    viewModel.objectWillChange.send()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
+                DispatchQueue.main.async {
+                    loadMemberInfo()
+                    viewModel.objectWillChange.send()
+                    print("✅ [EventRegView] Refreshed after JWT received")
+                }
+            }
     }
     
     private var content: some View {
@@ -378,7 +391,8 @@ struct EventRegistrationView: View {
                     Text("• Age verification via birth certificate may be required.")
                     Text("• Check your spam folder if you don't see the confirmation email.")
                     Divider()
-                    Text("**Waiver:** Fireworks used at event; NEMA not responsible for injuries or damages.")
+                    Text("**Food Allergy Disclaimer:** Meals may contain allergens. We cannot guarantee allergen-free food. Consume at your own risk.")
+                    Text("**Diwali Event Disclaimer:** Fireworks used at event; NEMA not responsible for injuries or damages.")
                     Divider()
                     Text("**Refund Policy:** Non-refundable except if event is cancelled by NEMA.")
                 }

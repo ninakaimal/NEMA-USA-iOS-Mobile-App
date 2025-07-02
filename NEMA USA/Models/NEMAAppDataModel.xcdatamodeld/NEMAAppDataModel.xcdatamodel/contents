@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="23H626" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="23H420" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
     <entity name="CDEvent" representedClassName="CDEvent" syncable="YES" codeGenerationType="class">
         <attribute name="categoryName" optional="YES" attributeType="String"/>
         <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
@@ -13,6 +13,7 @@
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
         <attribute name="plainDescription" optional="YES" attributeType="String"/>
+        <attribute name="regClosed" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="showBuyTickets" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="timeString" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>

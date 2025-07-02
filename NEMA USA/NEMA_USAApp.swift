@@ -58,6 +58,13 @@ struct NEMA_USAApp: App {
                 .sheet(item: $passwordResetToken) { token in
                     PasswordResetView(mode: .reset(token: token.id))
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .didSessionExpire)) { _ in
+                    DispatchQueue.main.async {
+                        print("🔒 [App] Session expired globally - clearing all session data")
+                        DatabaseManager.shared.clearSession()
+                        // The individual views (MyEventsView) will handle showing login
+                    }
+                }
         }
     }
 

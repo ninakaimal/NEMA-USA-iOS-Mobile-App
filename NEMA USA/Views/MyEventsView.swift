@@ -6,323 +6,222 @@
 //
 
 import SwiftUI
-import SafariServices
 
 struct MyEventsView: View {
     @StateObject private var viewModel = MyEventsViewModel()
-    @AppStorage("jwtApiToken") private var jwtApiToken: String?
-
+    @State private var selectedRecord: PurchaseRecord?
+    
     var body: some View {
-        // It checks the login token and shows either the `LoginView` or your events list.
-        if jwtApiToken != nil {
-            // --- LOGGED-IN VIEW ---
-            ZStack {
-                Color(.systemGroupedBackground).edgesIgnoringSafeArea(.all)
-
-                if viewModel.isLoading {
+        // REMOVED NavigationView - this was causing the conflict
+        VStack {
+            if viewModel.isLoading && viewModel.purchaseRecords.isEmpty {
+                // Loading state for initial load
+                VStack(spacing: 20) {
                     ProgressView()
-                } else if let errorMessage = viewModel.errorMessage {
-                    ErrorStateView(message: errorMessage)
-                } else {
-                    if viewModel.upcomingEvents.isEmpty && viewModel.pastEvents.isEmpty {
-                        EmptyStateView(
-                            imageName: "doc.text.magnifyingglass",
-                            title: "No Events Found",
-                            message: "Your upcoming events and past registrations will appear here."
-                        )
-                    } else {
-                        List {
-                            if !viewModel.upcomingEvents.isEmpty {
-                                Section(header: HeaderView(title: "Upcoming")) {
-                                    ForEach(viewModel.upcomingEvents) { record in
-                                        NavigationLink(destination: PurchaseDetailView(record: record)) {
-                                            PurchaseRecordRowView(record: record)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if !viewModel.pastEvents.isEmpty {
-                                Section(header: HeaderView(title: "Past")) {
-                                    ForEach(viewModel.pastEvents) { record in
-                                        NavigationLink(destination: PurchaseDetailView(record: record)) {
-                                            PurchaseRecordRowView(record: record)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .listStyle(.insetGrouped)
-                        .refreshable {
+                        .scaleEffect(1.2)
+                    Text("Loading your events...")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+            } else if let errorMessage = viewModel.errorMessage {
+                // Error state
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
+                    
+                    Text("Unable to Load Events")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text(errorMessage)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                    
+                    Button("Try Again") {
+                        viewModel.clearError()
+                        Task {
                             await viewModel.loadMyEvents()
                         }
                     }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.orange)
+                    .cornerRadius(10)
                 }
-            }
-            .navigationTitle("My Events")
-            // This uses .onAppear to load data only when the view is actually shown on screen for the first time.
-            .onAppear {
-                if viewModel.upcomingEvents.isEmpty && viewModel.pastEvents.isEmpty {
-                    Task {
-                        await viewModel.loadMyEvents()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+            } else if viewModel.purchaseRecords.isEmpty {
+                // Empty state
+                VStack(spacing: 16) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .font(.system(size: 50))
+                        .foregroundColor(.gray)
+                    
+                    Text("No Events Found")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("You haven't registered for any events or purchased any tickets yet.")
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                    
+                    Button("Browse Events") {
+                        // Navigate to events list - you may need to implement this
                     }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.orange)
+                    .cornerRadius(10)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+            } else {
+                // Main content
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(viewModel.purchaseRecords) { record in
+                            MyEventCard(record: record)
+                                .onTapGesture {
+                                    selectedRecord = record
+                                }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top)
+                }
+                .refreshable {
+                    await viewModel.refreshMyEvents()
                 }
             }
-            // Listens for the login success notification and explicitly reloads the data, ensuring your events appear immediately after you log in.
-            .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
-                Task {
-                    await viewModel.loadMyEvents()
-                }
-            }
-
-        } else {
-            // --- LOGGED-OUT VIEW ---
-            // Shows the LoginView directly when the user is not authenticated.
-            // This is non-dismissible, as you requested.
+        }
+        .navigationTitle("My Events")  // MOVED to here
+        .navigationBarTitleDisplayMode(.large)  // MOVED to here
+        .task {
+            await viewModel.loadMyEvents()
+        }
+        .sheet(item: $selectedRecord) { record in
+            PurchaseDetailView(record: record)
+        }
+        .fullScreenCover(isPresented: $viewModel.shouldShowLogin) {
             LoginView()
         }
     }
 }
 
-
-// MARK: - Subviews & Helpers
-// All the code below this line is correct and does not need any changes.
-
-private struct HeaderView: View {
-    let title: String
-    var body: some View {
-        Text(title)
-            .font(.title2.bold())
-            .foregroundColor(.primary)
-            .textCase(nil)
-            .padding(.bottom, 4)
-    }
-}
-
-private struct EmptyStateView: View {
-    let imageName: String
-    let title: String
-    let message: String
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: imageName)
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
-            Text(title)
-                .font(.title3.weight(.semibold))
-            Text(message)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-        }
-        .padding()
-    }
-}
-
-private struct ErrorStateView: View {
-    let message: String
-    var body: some View {
-        EmptyStateView(
-            imageName: "wifi.exclamationmark",
-            title: "Loading Failed",
-            message: message
-        )
-    }
-}
-
-private struct PurchaseRecordRowView: View {
+// MyEventCard remains the same
+struct MyEventCard: View {
     let record: PurchaseRecord
     
-    var body: some View {
-        HStack(spacing: 15) {
-            Image(systemName: record.type == "Ticket Purchase" ? "ticket.fill" : "flag.fill")
-                .font(.title2)
-                .foregroundColor(.orange)
-                .frame(width: 45, height: 45)
-                .background(Color.orange.opacity(0.1))
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                if let eventDate = record.eventDate {
-                    Text(eventDate.formatted(.dateTime.month().day().year()))
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.orange)
-                } else {
-                    Text("Date: TBD")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-                }
-                
-                Text(record.eventName)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Text(record.title)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(record.displayAmount)
-                    .font(.headline.weight(.semibold))
-                
-                Text(record.status)
-                    .font(.caption.bold())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(statusColor(for: record.status).opacity(0.15))
-                    .foregroundColor(statusColor(for: record.status))
-                    .cornerRadius(6)
-            }
+    private var eventDateText: String {
+        if let eventDate = record.eventDate {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            return formatter.string(from: eventDate)
+        } else {
+            return "Date TBD"
         }
-        .padding(.vertical, 8)
     }
     
-    private func statusColor(for status: String) -> Color {
-        switch status.lowercased() {
-        case "paid", "registration success":
+    private var purchaseDateText: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return "Purchased \(formatter.string(from: record.purchaseDate))"
+    }
+    
+    private var statusColor: Color {
+        switch record.status.lowercased() {
+        case "paid", "success":
             return .green
-        case "wait list", "approved, pending payment":
+        case "wait_list", "wait list":
             return .orange
-        case "registration withdrawn":
-            return .red
+        case "pending":
+            return .yellow
         default:
             return .gray
         }
     }
-}
-
-// MARK: - Detail View and its Helpers
-
-struct PurchaseDetailView: View {
-    let record: PurchaseRecord
-    @StateObject private var viewModel = PurchaseDetailViewModel()
-    @State private var pdfURLToOpen: URL?
     
     var body: some View {
-        Form {
-            if viewModel.isLoading {
-                HStack { Spacer(); ProgressView(); Spacer() }
-                    .listRowBackground(Color.clear)
-            } else if let ticketInfo = viewModel.ticketDetail {
-                TicketDetailSection(ticketInfo: ticketInfo, eventName: record.eventName, pdfURLToOpen: $pdfURLToOpen)
-            } else if let programInfo = viewModel.programDetail {
-                ProgramDetailSection(programInfo: programInfo,eventName: record.eventName)
-            } else if let error = viewModel.errorMessage {
-                Text(error).foregroundColor(.red)
-            }
-        }
-        .navigationTitle("Purchase Details")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await viewModel.loadDetails(for: record)
-        }
-        .sheet(item: $pdfURLToOpen) { url in
-            SafariView(url: url)
-        }
-    }
-}
-
-private struct TicketDetailSection: View {
-    let ticketInfo: TicketPurchaseDetailResponse
-    let eventName: String
-    @Binding var pdfURLToOpen: URL?
-    
-    var body: some View {
-        Section(header: Text("Event & Ticket Details")) {
-            InfoRow(label: "Event", value: ticketInfo.purchase.details.first?.ticketType.event?.title ?? eventName)
-            InfoRow(label: "Purchaser", value: ticketInfo.purchase.name)
-            InfoRow(label: "Email", value: ticketInfo.purchase.email)
-            InfoRow(label: "Phone", value: ticketInfo.purchase.phone)
-            if let panthi = ticketInfo.purchase.panthi {
-                InfoRow(label: "Time Slot", value: panthi.name)
-            }
-        }
-        
-        Section(header: Text("Items Purchased")) {
-            ForEach(ticketInfo.purchase.details) { item in
-                HStack {
-                    Text("\(item.no) x \(item.ticketType.typeName)")
-                    Spacer()
-                    Text("$\(item.amount) each")
-                        .foregroundColor(.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with type and status
             HStack {
-                Text("Total").fontWeight(.bold)
+                Text(record.type)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                
                 Spacer()
-                Text("$\(ticketInfo.purchase.totalAmount)")
-                    .fontWeight(.bold)
+                
+                Text(record.status)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor)
+                    .cornerRadius(8)
             }
-        }
-        
-        if let urlString = ticketInfo.pdfUrl, let url = URL(string: urlString) {
-            Section {
-                Button(action: { pdfURLToOpen = url }) {
+            
+            // Event name
+            Text(record.eventName)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+            
+            // Title (ticket count or program name)
+            Text(record.title)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            
+            // Date and amount
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Spacer()
-                        Image(systemName: "doc.text.fill")
-                        Text("View E-Ticket PDF")
-                        Spacer()
+                        Image(systemName: "calendar")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text(eventDateText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Image(systemName: "clock")
+                            .foregroundColor(.gray)
+                            .font(.caption)
+                        Text(purchaseDateText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
-                .tint(.orange)
+                
+                Spacer()
+                
+                Text(record.displayAmount)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
             }
         }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
 }
 
-private struct ProgramDetailSection: View {
-    let programInfo: Participant
-    let eventName: String
-    
-    var body: some View {
-        Section(header: Text("Registration Details")) {
-            InfoRow(label: "Event", value: programInfo.category.programs.event?.title ?? eventName)
-            InfoRow(label: "Program", value: programInfo.category.programs.name)
-            InfoRow(label: "Category", value: programInfo.category.age.name)
-            InfoRow(label: "Fee", value: "$\(String(format: "%.2f", programInfo.amount))")
-        }
-        
-        Section(header: Text("Participants")) {
-            ForEach(programInfo.details) { detail in
-                Text(detail.name)
-            }
-        }
-        
-        if let comments = programInfo.comments, !comments.isEmpty {
-            Section(header: Text("Comments")) {
-                Text(comments)
-            }
-        }
-    }
-}
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-private struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        return SFSafariViewController(url: url)
-    }
-    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+#Preview {
+    MyEventsView()
 }

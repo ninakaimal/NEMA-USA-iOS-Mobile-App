@@ -1419,9 +1419,11 @@ final class NetworkManager: NSObject {
             }
         }
     }
-    func fetchPurchaseRecords(since: Date? = nil) async throws -> [PurchaseRecord] { // Add 'since' parameter
+    
+    func fetchPurchaseRecords(since: Date? = nil) async throws -> [PurchaseRecord] {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
-            throw NetworkError.serverError("User not authenticated.")
+            print("❌ [NetworkManager] fetchPurchaseRecords: JWT token is missing")
+            throw NetworkError.serverError("User not authenticated. Please log in again.")
         }
         
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent("v1/mobile/my-events"), resolvingAgainstBaseURL: false)!
@@ -1442,23 +1444,58 @@ final class NetworkManager: NSObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-            throw NetworkError.serverError("Failed to fetch records. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). \(errorBody)")
-        }
+        print("🚀 [NetworkManager] Fetching purchase records from: \(url.absoluteString)")
+        print("🔐 [NetworkManager] Using JWT token: \(jwt.prefix(20))...")
 
         do {
-            return try self.iso8601JSONDecoder.decode([PurchaseRecord].self, from: data)
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ [NetworkManager] fetchPurchaseRecords: Invalid response type")
+                throw NetworkError.invalidResponse
+            }
+            
+            print("📡 [NetworkManager] fetchPurchaseRecords: HTTP Status \(httpResponse.statusCode)")
+            
+            if httpResponse.statusCode == 401 {
+                print("🔒 [NetworkManager] fetchPurchaseRecords: Unauthorized - clearing session")
+                DatabaseManager.shared.clearSession()
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                throw NetworkError.serverError("Authentication expired. Please log in again.")
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+                print("❌ [NetworkManager] fetchPurchaseRecords: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+                throw NetworkError.serverError("Failed to fetch records. Status: \(httpResponse.statusCode). \(errorBody)")
+            }
+
+            do {
+                let records = try self.iso8601JSONDecoder.decode([PurchaseRecord].self, from: data)
+                print("✅ [NetworkManager] fetchPurchaseRecords: Successfully decoded \(records.count) records")
+                return records
+            } catch {
+                print("❌ [NetworkManager] fetchPurchaseRecords: Decoding failed: \(error)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("📄 [NetworkManager] Response body: \(responseString)")
+                }
+                throw NetworkError.decodingError(error)
+            }
         } catch {
-            print("❌ [NetworkManager] fetchPurchaseRecords: Decoding failed: \(error)")
-            throw NetworkError.decodingError(error)
+            if error is NetworkError {
+                throw error
+            } else {
+                print("❌ [NetworkManager] fetchPurchaseRecords: Network error: \(error)")
+                throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+            }
         }
     }
 
     func fetchTicketRecordDetail(id: Int) async throws -> TicketPurchaseDetailResponse {
-        guard let jwt = DatabaseManager.shared.jwtApiToken else { throw NetworkError.serverError("User not authenticated.") }
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            print("❌ [NetworkManager] fetchTicketRecordDetail: JWT token is missing")
+            throw NetworkError.serverError("User not authenticated. Please log in again.")
+        }
         
         let url = baseURL.appendingPathComponent("v1/mobile/my-events/ticket/\(id)")
         var request = URLRequest(url: url)
@@ -1466,22 +1503,48 @@ final class NetworkManager: NSObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.serverError("Failed to fetch ticket details.")
-        }
+        print("🚀 [NetworkManager] Fetching ticket detail for ID: \(id)")
 
         do {
-            return try self.iso8601JSONDecoder.decode(TicketPurchaseDetailResponse.self, from: data)
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
+            }
+            
+            print("📡 [NetworkManager] fetchTicketRecordDetail: HTTP Status \(httpResponse.statusCode)")
+            
+            if httpResponse.statusCode == 401 {
+                DatabaseManager.shared.clearSession()
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                throw NetworkError.serverError("Authentication expired. Please log in again.")
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                _ = String(data: data, encoding: .utf8) ?? "No error body"
+                throw NetworkError.serverError("Failed to fetch ticket details. Status: \(httpResponse.statusCode)")
+            }
+
+            do {
+                return try self.iso8601JSONDecoder.decode(TicketPurchaseDetailResponse.self, from: data)
+            } catch {
+                print("❌ [NetworkManager] fetchTicketRecordDetail: Decoding failed: \(error)")
+                throw NetworkError.decodingError(error)
+            }
         } catch {
-            print("❌ [NetworkManager] fetchTicketRecordDetail: Decoding failed: \(error)")
-            throw NetworkError.decodingError(error)
+            if error is NetworkError {
+                throw error
+            } else {
+                throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+            }
         }
     }
 
     func fetchProgramRecordDetail(id: Int) async throws -> Participant {
-        guard let jwt = DatabaseManager.shared.jwtApiToken else { throw NetworkError.serverError("User not authenticated.") }
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            print("❌ [NetworkManager] fetchProgramRecordDetail: JWT token is missing")
+            throw NetworkError.serverError("User not authenticated. Please log in again.")
+        }
         
         let url = baseURL.appendingPathComponent("v1/mobile/my-events/program/\(id)")
         var request = URLRequest(url: url)
@@ -1489,17 +1552,40 @@ final class NetworkManager: NSObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.serverError("Failed to fetch program details.")
-        }
+        print("🚀 [NetworkManager] Fetching program detail for ID: \(id)")
 
         do {
-            return try self.iso8601JSONDecoder.decode(Participant.self, from: data)
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
+            }
+            
+            print("📡 [NetworkManager] fetchProgramRecordDetail: HTTP Status \(httpResponse.statusCode)")
+            
+            if httpResponse.statusCode == 401 {
+                DatabaseManager.shared.clearSession()
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                throw NetworkError.serverError("Authentication expired. Please log in again.")
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                _ = String(data: data, encoding: .utf8) ?? "No error body"
+                throw NetworkError.serverError("Failed to fetch program details. Status: \(httpResponse.statusCode)")
+            }
+
+            do {
+                return try self.iso8601JSONDecoder.decode(Participant.self, from: data)
+            } catch {
+                print("❌ [NetworkManager] fetchProgramRecordDetail: Decoding failed: \(error)")
+                throw NetworkError.decodingError(error)
+            }
         } catch {
-            print("❌ [NetworkManager] fetchProgramRecordDetail: Decoding failed: \(error)")
-            throw NetworkError.decodingError(error)
+            if error is NetworkError {
+                throw error
+            } else {
+                throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+            }
         }
     }
     
@@ -1544,6 +1630,7 @@ final class NetworkManager: NSObject {
         // let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
         print("✅ [NetworkManager] Successfully submitted registration for program \(programId).")
     }
+
 
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(

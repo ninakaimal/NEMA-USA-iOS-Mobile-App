@@ -8,5 +8,7 @@
 	<array>
 		<string>applinks:nemausa.org</string>
 	</array>
+	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
+	<true/>
 </dict>
 </plist>

@@ -22,9 +22,9 @@ struct ContactView: View {
     // 1) Fill in your Mailjet credentials & sender/recipient here:
     private let mailjetPublicKey  = "62bce36df049d1a0af07a06ffd3dd99a"
     private let mailjetPrivateKey = "5da699c98d3ac10773284a0f1d331f81"
-    private let mailFromEmail     = "nemamobileapp@nemausa.org"
+    private let mailFromEmail     = "webadmin@nemausa.org"
     private let mailFromName      = "NEMA USA App"
-    private let mailToEmail       = "nemamobileapp@nemausa.org"
+    private let mailToEmail       = "webadmin@nemausa.org"
     private let mailToName        = "NEMA Team"
     // ──────────────────────────────────────────────────────────────────────
 

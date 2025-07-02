@@ -32,7 +32,7 @@ struct ContentView: View {
 //                MyEventsView()
 //                    .tag(2)
 //                    .tabItem {
-//                        Image(systemName: "list.bullet.clipboard.fill")
+//                        Image(systemName: "calendar.badge.checkmark")
 //                        Text("My Events")
 //                    }
                 

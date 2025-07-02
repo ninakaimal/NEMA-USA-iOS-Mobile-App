@@ -30,12 +30,19 @@ struct ParticipantDetail: Codable, Identifiable {
 
 // Nested containers to match the backend JSON structure
 struct ProgramCategoryContainer: Codable {
-    let programs: EventProgram
+    let programs: ProgramForParticipant  // Changed from EventProgram to avoid conflicts
     let age: ProgramAgeCategory
+}
+
+struct ProgramForParticipant: Codable {
+    let name: String
+    let event: EventForParticipant
+}
+
+struct EventForParticipant: Codable {
+    let title: String
 }
 
 struct ProgramAgeCategory: Codable {
     let name: String
 }
-
-// NOTE: Your `EventProgram` model is already defined and can be reused here.

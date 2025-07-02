@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AuthenticationServices
 
 // MARK: – Notifications
 extension Notification.Name {
@@ -35,112 +36,118 @@ struct LoginView: View {
     @State private var logoOpacity    : Double  = 0
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // MARK: Logo
-                Image("LaunchLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 120, height: 120)
-                    .scaleEffect(logoScale)
-                    .opacity(logoOpacity)
-                    .padding(.top, logoTopPadding)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            withAnimation(.easeOut(duration: 0.7)) {
-                                logoScale      = 1.0
-                                logoTopPadding = 40
-                                logoOpacity    = 1.0
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // MARK: Logo
+                    Image("LaunchLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 120, height: 120)
+                        .scaleEffect(logoScale)
+                        .opacity(logoOpacity)
+                        .padding(.top, logoTopPadding)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.easeOut(duration: 0.7)) {
+                                    logoScale      = 1.0
+                                    logoTopPadding = 40
+                                    logoOpacity    = 1.0
+                                }
                             }
                         }
-                    }
-                
-                // MARK: Titles
-                Text("NEW ENGLAND MALAYALEE ASSOCIATION")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.orange)
-                    .multilineTextAlignment(.center)
-                
-                Text("ന്യൂ ഇംഗ്ലണ്ട് മലയാളി അസോസിയേഷൻ‍")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 40)
-                
-                // MARK: Email Field
-                TextField("Email", text: $email)
-                    .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
-                            .padding(.leading, 6)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .padding(12)
-                    .background(Color(.systemBackground))
-                    .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.orange, lineWidth: 0.5))
-                    .padding(.horizontal)
-                
-                // MARK: Password Field
-                
-            SecureField("Password", text: $password)
-                .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
-                            .padding(.leading, 6)
-                    .disableAutocorrection(true)
-                    .autocapitalization(.none)
-                    .padding(12)
-                    .background(Color(.systemBackground))
-                    .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.orange, lineWidth: 0.5))
-                    .padding(.horizontal)
-                
-                // MARK: Login Button
-                Button(action: performLogin) {
-                    HStack {
-                        Spacer()
-                        if isLoading {
-                            ProgressView()
-                        } else {
-                            Text("Login")
-                                .foregroundColor(.white)
-                                .bold()
-                        }
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(Color.orange)
-                    .cornerRadius(10)
-                }
-                .padding(.horizontal)
-                .disabled(isLoading)
-                // ► inline error (falls back when .alert() doesn’t fire)
-                if showAlert {
-                    Text(alertMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.red)
+                    
+                    // MARK: Titles
+                    Text("NEW ENGLAND MALAYALEE ASSOCIATION")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.orange)
                         .multilineTextAlignment(.center)
+                    
+                    Text("ന്യൂ ഇംഗ്ലണ്ട് മലയാളി അസോസിയേഷൻ‍")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 40)
+                    
+                    // MARK: Email Field
+                    TextField("Email", text: $email)
+                        .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
+                        .padding(.leading, 6)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .textContentType(.emailAddress)
+                        .padding(12)
+                        .background(Color(.systemBackground))
+                        .overlay(RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.orange, lineWidth: 0.5))
                         .padding(.horizontal)
-                }
-                
-                // MARK: Forgot password
-                        HStack(spacing: 30) {
+                    
+                    // MARK: Password Field
+                    
+                    SecureField("Password", text: $password)
+                        .foregroundColor(email.isEmpty ? .orange.opacity(0.5) : .primary)
+                        .padding(.leading, 6)
+                        .disableAutocorrection(true)
+                        .autocapitalization(.none)
+                        .textContentType(.password)
+                        .padding(12)
+                        .background(Color(.systemBackground))
+                        .overlay(RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.orange, lineWidth: 0.5))
+                        .padding(.horizontal)
+                    
+                    // MARK: Login Button
+                    Button(action: performLogin) {
+                        HStack {
+                            Spacer()
+                            if isLoading {
+                                ProgressView()
+                            } else {
+                                Text("Login")
+                                    .foregroundColor(.white)
+                                    .bold()
+                            }
+                            Spacer()
+                        }
+                        .padding(12)
+                        .background(Color.orange)
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    .disabled(isLoading)
+                    // ► inline error (falls back when .alert() doesn’t fire)
+                    if showAlert {
+                        Text(alertMessage)
+                            .font(.subheadline)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    // MARK: Forgot password
+                    HStack(spacing: 30) {
                         NavigationLink("Create an Account", destination: RegistrationView())
                         NavigationLink("Forgot Password?", destination: PasswordResetView(mode: .requestLink))
-                        }
-                        .font(.subheadline)
-                        .foregroundColor(.orange)
-                        .padding(.top, 24)
-                
-                // MARK: Footer
-                Text("© NEMA Boston, All rights reserved.")
-                    .font(.footnote)
-                    .foregroundColor(.gray.opacity(0.7))
-                    .padding(.top, 30)
-                
-                Spacer(minLength: 20)
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.orange)
+                    .padding(.top, 24)
+                    
+                    // MARK: Footer
+                    Text("© NEMA Boston, All rights reserved.")
+                        .font(.footnote)
+                        .foregroundColor(.gray.opacity(0.7))
+                        .padding(.top, 30)
+                    
+                    Spacer(minLength: 20)
+                }
             }
+            .background(Color(.systemBackground))
+            .ignoresSafeArea(.keyboard)
+            .navigationBarHidden(true) // Hide the navigation bar for clean look
         }
-        .background(Color(.systemBackground))
-        .ignoresSafeArea(.keyboard)
+        .navigationViewStyle(StackNavigationViewStyle())
         .alert(isPresented: $showAlert) {
             Alert(
                 title:   Text(alertTitle),
@@ -182,6 +189,7 @@ struct LoginView: View {
                                 print("🔐 [LoginView] got JWT")
                                 DatabaseManager.shared.saveJwtApiToken(jwt)
                                 NotificationCenter.default.post(name: .didReceiveJWT, object: nil)
+                                
                                 // only now set authToken & dismiss
                                 self.authToken = laravelToken
                                 self.presentationMode.wrappedValue.dismiss()
@@ -218,6 +226,7 @@ struct LoginView: View {
         }
     }
 }
+
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
         LoginView()
