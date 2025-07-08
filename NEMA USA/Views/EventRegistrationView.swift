@@ -392,7 +392,7 @@ struct EventRegistrationView: View {
                     Text("• Check your spam folder if you don't see the confirmation email.")
                     Divider()
                     Text("**Food Allergy Disclaimer:** Meals may contain allergens. We cannot guarantee allergen-free food. Consume at your own risk.")
-                    Text("**Diwali Event Disclaimer:** Fireworks used at event; NEMA not responsible for injuries or damages.")
+                    Text("**Firecrackers Disclaimer:** Fireworks may be used at certain events like Diwali; NEMA not responsible for injuries or damages.")
                     Divider()
                     Text("**Refund Policy:** Non-refundable except if event is cancelled by NEMA.")
                 }

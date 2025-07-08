@@ -1639,55 +1639,70 @@ final class NetworkManager: NSObject {
         completion: @escaping (Result<Data, NetworkError>) -> Void
     ) {
         session.dataTask(with: request) { data, resp, err in
-            // transport error
             if let e = err {
-                print("⚠️ [NetworkManager] transport error:", e.localizedDescription)
+                print("⚠️ [NetworkManager] Transport error: \(e.localizedDescription)")
                 return DispatchQueue.main.async {
-                    completion(.failure(.serverError(
-                        "\(e.localizedDescription). Please check your connection."
-                    )))
+                    completion(.failure(.serverError(e.localizedDescription)))
                 }
             }
-            // must be HTTP
+            
             guard let http = resp as? HTTPURLResponse else {
-                print("⚠️ [NetworkManager] non-HTTP response:", resp ?? "nil")
+                print("⚠️ [NetworkManager] Non-HTTP response")
                 return DispatchQueue.main.async {
-                    completion(.failure(.serverError("Unexpected response format.")))
+                    completion(.failure(.invalidResponse))
                 }
             }
-            // retry on 401…
-            if http.statusCode == 401, retrying {
+            
+            // Enhanced 401 handling
+            if http.statusCode == 401 && retrying {
+                print("🔄 [NetworkManager] Got 401, attempting token refresh...")
                 return self.refreshToken { result in
                     switch result {
                     case .success(let newToken):
+                        // Retry the original request with new token
                         var newReq = request
                         newReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
                         self.performRequest(newReq, retrying: false, completion: completion)
-                    case .failure:
+                    case .failure(let refreshError):
+                        print("❌ [NetworkManager] Token refresh failed: \(refreshError)")
                         DispatchQueue.main.async {
-                            DatabaseManager.shared.clearSession()
-                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
-                            completion(.failure(.invalidResponse))
+                            completion(.failure(refreshError))
                         }
                     }
                 }
             }
-            // non-2xx? log status + body
+            
+            // Handle successful responses
             guard (200..<300).contains(http.statusCode) else {
-                let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-                print("⚠️ [NetworkManager] HTTP \(http.statusCode) →", bodyText)
+                let bodyText = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                print("⚠️ [NetworkManager] HTTP \(http.statusCode): \(bodyText)")
+                
+                // Special handling for authentication-related errors
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    DispatchQueue.main.async {
+                        DatabaseManager.shared.clearSession()
+                        NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                        completion(.failure(.serverError("Authentication failed. Please log in again.")))
+                    }
+                    return
+                }
+                
                 return DispatchQueue.main.async {
                     completion(.failure(.serverError("HTTP \(http.statusCode)")))
                 }
             }
-            // data must exist
+            
+            // Data must exist
             guard let d = data else {
                 print("⚠️ [NetworkManager] HTTP \(http.statusCode) but no data")
                 return DispatchQueue.main.async {
                     completion(.failure(.invalidResponse))
                 }
             }
-            DispatchQueue.main.async { completion(.success(d)) }
+            
+            DispatchQueue.main.async {
+                completion(.success(d))
+            }
         }
         .resume()
     }
@@ -1695,37 +1710,70 @@ final class NetworkManager: NSObject {
     /// POST `/refresh-token`
     private func refreshToken(completion: @escaping (Result<String, NetworkError>) -> Void) {
         guard let refresh = DatabaseManager.shared.refreshToken else {
+            print("⚠️ [NetworkManager] No refresh token available, clearing session")
+            DatabaseManager.shared.clearSession()
+            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
             return completion(.failure(.invalidResponse))
         }
-        let endpoint = baseURL.appendingPathComponent("refresh-token")
+        
+        let endpoint = baseURL.appendingPathComponent("refresh-token") // Keep existing path
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(["refreshToken": refresh])
         
+        print("🔄 [NetworkManager] Attempting token refresh...")
+        
         session.dataTask(with: req) { data, resp, err in
             if let e = err {
+                print("❌ [NetworkManager] Token refresh network error: \(e.localizedDescription)")
                 return DispatchQueue.main.async {
-                    completion(.failure(.serverError(
-                        "\(e.localizedDescription). Please check your network."
-                    )))
+                    completion(.failure(.serverError(e.localizedDescription)))
                 }
             }
-            guard let http  = resp as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let bytes = data
-            else {
+            
+            guard let http = resp as? HTTPURLResponse else {
+                print("❌ [NetworkManager] Token refresh: Invalid response type")
                 return DispatchQueue.main.async {
                     completion(.failure(.invalidResponse))
                 }
             }
+            
+            print("🔄 [NetworkManager] Token refresh response status: \(http.statusCode)")
+            
+            // Handle different status codes
+            if http.statusCode == 401 || http.statusCode == 422 {
+                // Refresh token is expired or invalid
+                print("🚫 [NetworkManager] Refresh token expired/invalid, forcing re-login")
+                DispatchQueue.main.async {
+                    DatabaseManager.shared.clearSession()
+                    NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                    completion(.failure(.serverError("Session expired. Please log in again.")))
+                }
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode), let bytes = data else {
+                let errorBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
+                print("❌ [NetworkManager] Token refresh failed with status \(http.statusCode): \(errorBody)")
+                return DispatchQueue.main.async {
+                    completion(.failure(.serverError("Token refresh failed: \(http.statusCode)")))
+                }
+            }
+            
             do {
                 let decoded = try self.iso8601JSONDecoder.decode(RefreshResponse.self, from: bytes)
                 DatabaseManager.shared.saveJwtApiToken(decoded.token)
                 DatabaseManager.shared.saveRefreshToken(decoded.refreshToken)
-                DispatchQueue.main.async { completion(.success(decoded.token)) }
+                print("✅ [NetworkManager] Token refresh successful")
+                DispatchQueue.main.async {
+                    completion(.success(decoded.token))
+                }
             } catch {
-                DispatchQueue.main.async { completion(.failure(.decodingError(error))) }
+                print("❌ [NetworkManager] Token refresh decode error: \(error)")
+                DispatchQueue.main.async {
+                    completion(.failure(.decodingError(error)))
+                }
             }
         }
         .resume()
