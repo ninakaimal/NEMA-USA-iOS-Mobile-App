@@ -10,6 +10,7 @@ import SwiftUI
 class ProgramRegistrationViewModel: ObservableObject {
     @Published var eligibleParticipants: [FamilyMember] = []
     @Published var selectedParticipantIDs = Set<Int>()
+    @Published var selectedPracticeLocationId: Int? = nil
     @Published var comments: String = ""
     @Published var acceptedTerms = false
     
@@ -38,6 +39,12 @@ class ProgramRegistrationViewModel: ObservableObject {
     func submitRegistration(for eventId: String, program: EventProgram) async {
         guard canSubmit else { return }
         
+        // Check if practice location is required but not selected
+        if let locations = program.practiceLocations, !locations.isEmpty, selectedPracticeLocationId == nil {
+            errorMessage = "Please select a practice location"
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
         
@@ -46,6 +53,7 @@ class ProgramRegistrationViewModel: ObservableObject {
                 eventId: eventId,
                 programId: program.id,
                 participantIds: Array(selectedParticipantIDs),
+                practiceLocationId: selectedPracticeLocationId,
                 comments: comments
             )
             registrationSuccess = true
@@ -98,18 +106,31 @@ struct ProgramRegistrationView: View {
                     }
                 }
                 
-                // Section 2: Comments
+                // Section 2: Practice Location Selection (if applicable)
+                if let locations = program.practiceLocations, !locations.isEmpty {
+                    Section(header: Text("Select Practice Location")) {
+                        Picker("Practice Location", selection: $viewModel.selectedPracticeLocationId) {
+                            Text("Select a location").tag(nil as Int?)
+                            ForEach(locations) { location in
+                                Text(location.location).tag(location.id as Int?)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                }
+                
+                // Section 3: Comments
                 Section(header: Text("Comments (Optional)")) {
                     TextEditor(text: $viewModel.comments)
                         .frame(height: 80)
                 }
                 
-                // Section 3: Terms
+                // Section 4: Terms
                 Section {
                     Toggle("I accept rules, guidelines and waiver for this program", isOn: $viewModel.acceptedTerms)
                 }
                 
-                // --- UX CHANGE: Section 4: Submit Button ---
+                // Section 5: Submit Button
                 Section {
                     Button(action: {
                         Task { await viewModel.submitRegistration(for: event.id, program: program) }
@@ -129,18 +150,15 @@ struct ProgramRegistrationView: View {
                     .foregroundColor(.white)
                     .padding()
                     .frame(maxWidth: .infinity)
-                    // Use a ternary operator to change color based on disabled state
                     .background(viewModel.canSubmit ? Color.orange : Color.gray)
                     .cornerRadius(10)
                     .disabled(!viewModel.canSubmit || viewModel.isLoading)
-                    // This modifier makes the button fill the full width of the form
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
             }
             .navigationTitle(program.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // The confirmation button has been moved, only the Cancel button remains.
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(.white)

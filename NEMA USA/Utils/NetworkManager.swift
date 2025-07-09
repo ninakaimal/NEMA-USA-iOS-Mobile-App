@@ -1589,7 +1589,7 @@ final class NetworkManager: NSObject {
         }
     }
     
-    func registerForProgram(eventId: String, programId: String, participantIds: [Int], comments: String) async throws {
+    func registerForProgram(eventId: String, programId: String, participantIds: [Int], practiceLocationId: Int? = nil, comments: String) async throws {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
             throw NetworkError.serverError("User not authenticated.")
         }
@@ -1601,13 +1601,22 @@ final class NetworkManager: NSObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "participant_ids": participantIds,
             "comments": comments
         ]
+        
+        // Include practice location if provided
+        if let locationId = practiceLocationId {
+            body["practice_location_id"] = locationId
+        }
+        
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         print("🚀 [NetworkManager] Submitting registration for program \(programId) with participants \(participantIds)")
+        if let locationId = practiceLocationId {
+            print("   Including practice location ID: \(locationId)")
+        }
 
         let (data, response) = try await session.data(for: request)
         
@@ -1625,9 +1634,6 @@ final class NetworkManager: NSObject {
             print("❌ [NetworkManager] registerForProgram: HTTP Error. Body: \(errorBody)")
             throw NetworkError.serverError("Failed to submit registration. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
         }
-        
-        // This line was causing a decoding error if the API doesn't return FamilyMember array for registration
-        // let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
         print("✅ [NetworkManager] Successfully submitted registration for program \(programId).")
     }
 

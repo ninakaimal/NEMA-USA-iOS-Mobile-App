@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="23H420" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
-    <entity name="CDEvent" representedClassName="CDEvent" syncable="YES" codeGenerationType="class">
+    <entity name="CDEvent" representedClassName=".CDEvent" syncable="YES" codeGenerationType="class">
         <attribute name="categoryName" optional="YES" attributeType="String"/>
         <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="eventCatId" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
@@ -30,6 +30,7 @@
         <attribute name="time" optional="YES" attributeType="String"/>
         <relationship name="categories" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CDProgramCategory" inverseName="program" inverseEntity="CDProgramCategory"/>
         <relationship name="event" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="programs" inverseEntity="CDEvent"/>
+        <relationship name="practiceLocations" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CDPracticeLocation" inverseName="programs" inverseEntity="CDPracticeLocation"/>
     </entity>
     <entity name="CDEventTicketType" representedClassName="CDEventTicketType" syncable="YES" codeGenerationType="class">
         <attribute name="currencyCode" attributeType="String"/>
@@ -52,6 +53,11 @@
         <attribute name="panthiDescription" optional="YES" attributeType="String"/>
         <attribute name="totalSlots" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="event" maxCount="1" deletionRule="Nullify" destinationEntity="CDEvent" inverseName="panthis" inverseEntity="CDEvent"/>
+    </entity>
+    <entity name="CDPracticeLocation" representedClassName=".CDPracticeLocation" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="location" attributeType="String"/>
+        <relationship name="programs" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CDEventProgram" inverseName="practiceLocations" inverseEntity="CDEventProgram"/>
     </entity>
     <entity name="CDProgramCategory" representedClassName="CDProgramCategory" syncable="YES" codeGenerationType="class">
         <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
