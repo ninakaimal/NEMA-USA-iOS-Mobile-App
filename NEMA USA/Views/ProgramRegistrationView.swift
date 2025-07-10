@@ -20,8 +20,13 @@ class ProgramRegistrationViewModel: ObservableObject {
 
     private let networkManager = NetworkManager.shared
 
-    var canSubmit: Bool {
-        !selectedParticipantIDs.isEmpty && acceptedTerms
+    func canSubmit(for program: EventProgram) -> Bool {
+        guard !selectedParticipantIDs.isEmpty && acceptedTerms else { return false }
+        if let locations = program.practiceLocations, !locations.isEmpty {
+            guard selectedPracticeLocationId != nil else { return false }
+        }
+        
+        return true
     }
 
     func loadData(for programId: String) async {
@@ -37,7 +42,7 @@ class ProgramRegistrationViewModel: ObservableObject {
     }
 
     func submitRegistration(for eventId: String, program: EventProgram) async {
-        guard canSubmit else { return }
+        guard canSubmit(for: program) else { return }
         
         // Check if practice location is required but not selected
         if let locations = program.practiceLocations, !locations.isEmpty, selectedPracticeLocationId == nil {
@@ -108,7 +113,10 @@ struct ProgramRegistrationView: View {
                 
                 // Section 2: Practice Location Selection (if applicable)
                 if let locations = program.practiceLocations, !locations.isEmpty {
-                    Section(header: Text("Select Practice Location")) {
+                    Section(header: HStack {
+                        Text("Select Practice Location")
+                        Text("*").foregroundColor(.red) // Required indicator
+                    }) {
                         Picker("Practice Location", selection: $viewModel.selectedPracticeLocationId) {
                             Text("Select a location").tag(nil as Int?)
                             ForEach(locations) { location in
@@ -116,6 +124,12 @@ struct ProgramRegistrationView: View {
                             }
                         }
                         .pickerStyle(MenuPickerStyle())
+                        // Show validation error if not selected
+                        if viewModel.selectedPracticeLocationId == nil && viewModel.acceptedTerms && !viewModel.selectedParticipantIDs.isEmpty {
+                            Text("Practice location is required for this program")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
                     }
                 }
                 
@@ -150,10 +164,38 @@ struct ProgramRegistrationView: View {
                     .foregroundColor(.white)
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(viewModel.canSubmit ? Color.orange : Color.gray)
+                    .background(viewModel.canSubmit(for: program) ? Color.orange : Color.gray)
                     .cornerRadius(10)
-                    .disabled(!viewModel.canSubmit || viewModel.isLoading)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .disabled(!viewModel.canSubmit(for: program) || viewModel.isLoading)
+                    
+                    // Show helpful message when button is disabled
+                    if !viewModel.canSubmit(for: program) && !viewModel.isLoading {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("To register or join waitlist, please:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            if viewModel.selectedParticipantIDs.isEmpty {
+                                Text("• Select at least one participant")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            if let locations = program.practiceLocations, !locations.isEmpty, viewModel.selectedPracticeLocationId == nil {
+                                Text("• Choose a practice location")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            if !viewModel.acceptedTerms {
+                                Text("• Accept the terms and conditions")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                    }
                 }
             }
             .navigationTitle(program.name)
