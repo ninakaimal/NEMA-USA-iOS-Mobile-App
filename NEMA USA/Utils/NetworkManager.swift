@@ -462,7 +462,7 @@ final class NetworkManager: NSObject {
         }
     }
     
-    /// Scrape `/profile` HTML → UserProfile
+    // Scrape `/profile` HTML → UserProfile
     func fetchProfile(completion: @escaping (Result<UserProfile, NetworkError>) -> Void) {
         let url = baseURL.appendingPathComponent("profile")
         session.dataTask(with: url) { data, _, err in
@@ -525,97 +525,38 @@ final class NetworkManager: NSObject {
         .resume()
     }
     
-    /// Scrape `/fmly_mmbr` HTML → [FamilyMember]
+    /// GET /v1/mobile/family-members
     func fetchFamily(completion: @escaping (Result<[FamilyMember], NetworkError>) -> Void) {
-        guard DatabaseManager.shared.laravelSessionToken != nil else {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
             return completion(.failure(.invalidResponse))
         }
-        let url = baseURL.appendingPathComponent("fmly_mmbr")
-        session.dataTask(with: url) { data, _, err in
-            if let err = err {
-                return DispatchQueue.main.async {
-                    completion(.failure(.serverError(err.localizedDescription)))
-                }
-            }
-            guard let bytes = data,
-                  let html  = String(data: bytes, encoding: .utf8)
-            else {
-                return DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
-            }
-            do {
-                let doc = try SwiftSoup.parse(html)
-                guard let container = try doc
-                    .select("div.register-form ul.mt-3.row")
-                    .first()
-                else {
-                    throw NSError(domain: "Parse", code: 0,
-                                  userInfo: [NSLocalizedDescriptionKey: "Family list not found"])
-                }
-                
-                var members = [FamilyMember]()
-                let nameEls = try container.select("h5.col-9")
-                for nameEl in nameEls {
-                    let name = try nameEl.text()
-                    guard
-                        let span   = try nameEl.nextElementSibling(),
-                        let anchor = try span.select("a").first(),
-                        let rawHref = try? anchor.attr("href"),
-                        let comps   = URLComponents(string: rawHref),
-                        let idQuery = comps.queryItems?.first(where: { $0.name == "id" })?.value,
-                        let id      = Int(idQuery)
-                    else {
-                        continue
-                    }
-                    
-                    let detailsUl = try span.nextElementSibling()
-                    let lis       = try detailsUl?.select("li") ?? Elements()
-                    
-                    var relVal: String?
-                    var emailVal: String?
-                    var dobVal: String?
-                    var phoneVal: String?
-                    
-                    for li in lis {
-                        let txt   = try li.text()
-                        let parts = txt
-                            .split(separator: ":", maxSplits: 1)
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                        guard parts.count == 2 else { continue }
-                        switch parts[0].lowercased() {
-                        case "relationship": relVal   = parts[1].isEmpty ? nil : parts[1]
-                        case "email":        emailVal = parts[1].isEmpty ? nil : parts[1]
-                        case "dob":          dobVal   = parts[1].isEmpty ? nil : parts[1]
-                        case "phone":        phoneVal = parts[1].isEmpty ? nil : parts[1]
-                        default: break
-                        }
-                    }
-                    
-                    members.append(.init(
-                        id:           id,
-                        name:         name,
-                        relationship: relVal   ?? "",
-                        email:        emailVal,
-                        dob:          dobVal,
-                        phone:        phoneVal
-                    ))
-                }
-                
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/family-members")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        
+        performRequest(req) { result in
+            switch result {
+            case .failure(let e):
                 DispatchQueue.main.async {
-                    completion(.success(members))
+                    completion(.failure(e))
                 }
-            } catch {
-                DispatchQueue.main.async {
-                    completion(.failure(.decodingError(error)))
+            case .success(let data):
+                do {
+                    let members = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
+                    DatabaseManager.shared.saveFamily(members)
+                    DispatchQueue.main.async {
+                        completion(.success(members))
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        completion(.failure(.decodingError(error)))
+                    }
                 }
             }
         }
-        .resume()
     }
-    
-    
-    
     
     // MARK: – JSON-based methods
     
@@ -803,60 +744,46 @@ final class NetworkManager: NSObject {
         name: String,
         phone: String,
         address: String,
+        dob: String,
         completion: @escaping (Result<UserProfile, NetworkError>) -> Void
     ) {
-        fetchCSRFToken { result in
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        let url = baseURL.appendingPathComponent("v1/user")
+        var req = URLRequest(url: url)
+        req.httpMethod = "PATCH"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        
+        let params = [
+            "name": name,
+            "phone": phone,
+            "address": address,
+            "dob": dob
+        ]
+        req.httpBody = try? JSONEncoder().encode(params)
+        
+        performRequest(req) { result in
             switch result {
-            case .failure:
-                return completion(.failure(.invalidResponse))
-            case .success(let token):
-                var req = URLRequest(url: self.baseURL.appendingPathComponent("profile"))
-                req.httpMethod = "POST"
-                req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                
-                let userId = DatabaseManager.shared.currentUser?.id ?? 0
-                let params = [
-                    "_token": token,
-                    "user_id": String(userId),
-                    "name": name,
-                    "phone": phone,
-                    "address": address
-                ]
-                req.httpBody = params
-                    .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
-                    .joined(separator: "&")
-                    .data(using: .utf8)
-                
-                self.session.dataTask(with: req) { data, resp, err in
-                    if let err = err {
-                        return DispatchQueue.main.async {
-                            completion(.failure(.serverError(err.localizedDescription)))
-                        }
+            case .failure(let e):
+                DispatchQueue.main.async {
+                    completion(.failure(e))
+                }
+            case .success(let data):
+                do {
+                    let profile = try self.iso8601JSONDecoder.decode(UserProfile.self, from: data)
+                    // Save to local storage (this was done in fetchProfileJSON before)
+                    DatabaseManager.shared.saveUser(profile)
+                    UserDefaults.standard.set(profile.id, forKey: "userId")
+                    DispatchQueue.main.async {
+                        completion(.success(profile))
                     }
-                    guard let http = resp as? HTTPURLResponse,
-                          (200..<400).contains(http.statusCode)
-                    else {
-                        let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No data"
-                        print("⚠️ Update Profile Error, status: \(String(describing: resp)), body: \(body)")
-                        return DispatchQueue.main.async {
-                            completion(.failure(.invalidResponse))
-                        }
-                    }
-                    
-                    // 3) now fetch the *JSON* user — this has the full profile + expiry
-                    self.fetchProfileJSON { result in
-                        DispatchQueue.main.async {
-                            switch result {
-                            case .success(let freshProfile):
-                                completion(.success(freshProfile))
-                                
-                            case .failure(let err):
-                                completion(.failure(err))
-                            }
-                        }
+                } catch {
+                    DispatchQueue.main.async {
+                        completion(.failure(.decodingError(error)))
                     }
                 }
-                .resume()
             }
         }
     }
@@ -902,201 +829,123 @@ final class NetworkManager: NSObject {
         }.resume()
     }
     
-    /// Adds a new family member using a form-POST to the /fmly_mmbr endpoint.
+    /// POST /v1/mobile/family-members
     func addNewFamilyMember(
         name: String,
         relationship: String,
         email: String?,
-        dob: String?, // Expected format "YYYY-MM"
+        dob: String?,
         phone: String?,
         completion: @escaping (Result<Void, NetworkError>) -> Void
     ) {
-        fetchCSRFToken { result in
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/family-members")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var body: [String: Any] = [
+            "name": name,
+            "relationship": relationship
+        ]
+        if let email = email, !email.isEmpty { body["email"] = email }
+        if let phone = phone, !phone.isEmpty { body["phone"] = phone }
+        if let dob = dob, !dob.isEmpty { body["dob"] = dob }
+        
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        
+        performRequest(req) { result in
             switch result {
-            case .failure(let error):
+            case .failure(let e):
                 DispatchQueue.main.async {
-                    completion(.failure(.serverError("CSRF token fetch failed for add member: \(error.localizedDescription)")))
+                    completion(.failure(e))
                 }
-            case .success(let token):
-                let addURL = self.baseURL.appendingPathComponent("fmly_mmbr") // Same URL as updateFamily
-                var req = URLRequest(url: addURL)
-                req.httpMethod = "POST"
-                req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                req.setValue("\(self.baseURL)/fmly_mmbr", forHTTPHeaderField: "Referer") // Consistent referer
-
-                var params: [String: String] = [
-                    "_token":       token,
-                    "fname":        name,
-                    "relationship": relationship
-                ]
-                // Add optional fields only if they have values
-                if let email = email, !email.isEmpty { params["email"] = email }
-                if let phone = phone, !phone.isEmpty { params["phone"] = phone }
-                if let dob = dob, !dob.isEmpty { params["dob"] = dob }
-                // IMPORTANT: DO NOT send an "id" parameter for new members,
-                // as per UserController.php's addListFamilyMember logic and HAR analysis.
-
-                req.httpBody = params
-                    .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
-                    .joined(separator: "&")
-                    .data(using: .utf8)
-
-                print("🚀 [NetworkManager] Adding new family member: \(name) to URL: \(addURL.absoluteString) with params: \(params)")
-
-                self.session.dataTask(with: req) { data, resp, err in
-                    if let e = err {
-                        DispatchQueue.main.async {
-                            completion(.failure(.serverError("Add new member request failed: \(e.localizedDescription)")))
-                        }
-                        return
-                    }
-                    guard let http = resp as? HTTPURLResponse else {
-                        DispatchQueue.main.async {
-                            completion(.failure(.invalidResponse))
-                        }
-                        return
-                    }
-
-                    // Successful form POSTs for add/update usually result in a redirect (302)
-                    // or a 200 if the page is re-rendered with messages.
-                    if (200..<400).contains(http.statusCode) {
-                        print("✅ [NetworkManager] Add new member request processed by backend (Status: \(http.statusCode)).")
-                        DispatchQueue.main.async {
-                            completion(.success(()))
-                        }
-                    } else {
-                        let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
-                        print("⚠️ Add New Family Member Error, status: \(http.statusCode), body: \(responseBody)")
-                        DispatchQueue.main.async {
-                            completion(.failure(.serverError("Add new member failed on server with status \(http.statusCode).")))
-                        }
-                    }
-                }.resume()
+            case .success:
+                DispatchQueue.main.async {
+                    completion(.success(()))
+                }
             }
         }
     }
 
-    /// POST `/fmly_mmbr` form-URL-encoded (one request per member)
+    /// Update family members individually
     func updateFamily(
         _ members: [FamilyMember],
         completion: @escaping (Result<Void, NetworkError>) -> Void
     ) {
-        fetchCSRFToken { result in
-            switch result {
-            case .failure:
-                return completion(.failure(.invalidResponse))
-            case .success(let token):
-                let group = DispatchGroup()
-                var anyError: NetworkError?
-                
-                for m in members {
-                    group.enter()
-                    var req = URLRequest(url: self.baseURL.appendingPathComponent("fmly_mmbr"))
-                    req.httpMethod = "POST"
-                    req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                    
-                    let params: [String: String] = [
-                        "_token":       token,
-                        "fname":        m.name,
-                        "email":        m.email    ?? "",
-                        "phone":        m.phone    ?? "",
-                        "dob":          m.dob      ?? "",
-                        "relationship": m.relationship,
-                        "id":           String(m.id)
-                    ]
-                    req.httpBody = params
-                        .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)" }
-                        .joined(separator: "&")
-                        .data(using: .utf8)
-                    
-                    self.session.dataTask(with: req) { _, resp, err in
-                        if let err = err {
-                            anyError = .serverError(err.localizedDescription)
-                        } else if let http = resp as? HTTPURLResponse, !(200..<400).contains(http.statusCode) {
-                            anyError = .invalidResponse
-                        }
-                        group.leave()
-                    }
-                    .resume()
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
+        }
+        
+        let group = DispatchGroup()
+        var anyError: NetworkError?
+        
+        for member in members {
+            group.enter()
+            
+            let url = baseURL.appendingPathComponent("v1/mobile/family-members/\(member.id)")
+            var req = URLRequest(url: url)
+            req.httpMethod = "PUT"
+            req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let body: [String: Any] = [
+                "name": member.name,
+                "relationship": member.relationship,
+                "email": member.email ?? "",
+                "phone": member.phone ?? "",
+                "dob": member.dob ?? ""
+            ]
+            
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            
+            performRequest(req) { result in
+                if case .failure(let error) = result {
+                    anyError = error
                 }
-                
-                group.notify(queue: .main) {
-                    if let err = anyError {
-                        completion(.failure(err))
-                    } else {
-                        completion(.success(()))
-                    }
-                }
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            if let err = anyError {
+                completion(.failure(err))
+            } else {
+                completion(.success(()))
             }
         }
     }
     
-    /// Deletes a family member using a form-POST, consistent with fmly_mmbr interactions.
+    /// DELETE /v1/mobile/family-members/{id}
     func deleteFamilyMember(
         memberId: Int,
         completion: @escaping (Result<Void, NetworkError>) -> Void
     ) {
-        // For GET requests, CSRF tokens are generally not used or checked by Laravel by default.
-        // Parameters will be part of the URL.
-        
-        var urlComponents = URLComponents(url: self.baseURL.appendingPathComponent("family/delete"), resolvingAgainstBaseURL: false)!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "id", value: String(memberId)) // Send 'id' as a query parameter
-        ]
-
-        guard let deleteURL = urlComponents.url else {
-            DispatchQueue.main.async {
-                completion(.failure(.serverError("Could not construct delete URL for GET request.")))
-            }
-            return
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            return completion(.failure(.invalidResponse))
         }
-
-        var req = URLRequest(url: deleteURL)
-        req.httpMethod = "GET" // Changed from POST to GET
-
-        // Headers for POST (like Content-Type for form-urlencoded) are not needed for GET.
-        // The Referer header might still be useful for some web servers/analytics, so it can be kept if desired,
-        // but it's not strictly necessary for the GET request itself to function.
-        // req.setValue("\(self.baseURL)/fmly_mmbr", forHTTPHeaderField: "Referer") // Optional: keep if needed
-
-        print("🚀 [NetworkManager] Deleting family member ID (GET): \(memberId) from URL: \(deleteURL.absoluteString)")
-
-        // Use self.session, which handles cookies (important for web routes)
-        self.session.dataTask(with: req) { data, resp, err in
-            if let e = err {
+        
+        let url = baseURL.appendingPathComponent("v1/mobile/family-members/\(memberId)")
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        
+        performRequest(req) { result in
+            switch result {
+            case .failure(let e):
                 DispatchQueue.main.async {
-                    completion(.failure(.serverError("Delete request (GET) failed: \(e.localizedDescription)")))
+                    completion(.failure(e))
                 }
-                return
-            }
-            guard let http = resp as? HTTPURLResponse else {
+            case .success:
                 DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse))
-                }
-                return
-            }
-
-            // A successful GET to a web route that performs an action and then redirects
-            // (like your PHP's `return redirect()->route('fmly_mmbr');`)
-            // will typically result in a 302 (redirect) status from the initial GET request if successful,
-            // or a 200 if the server processes the delete and then re-renders the destination page directly
-            // in the response to this GET.
-            // The URLSession will automatically follow the 302 redirect by default and the final status (e.g. 200 for the fmly_mmbr page)
-            // will be what 'http.statusCode' reflects here, unless redirect handling is customized.
-            // We'll consider 200-399 as success because the redirect itself implies the action was likely processed.
-            if (200..<400).contains(http.statusCode) {
-                DispatchQueue.main.async {
-                    print("✅ [NetworkManager] Delete request (GET) for family member ID: \(memberId) processed. Final status: \(http.statusCode).")
                     completion(.success(()))
                 }
-            } else {
-                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No response body"
-                print("⚠️ Delete Family Member via GET Error, status: \(http.statusCode), body: \(responseBody)")
-                DispatchQueue.main.async {
-                    completion(.failure(.serverError("Delete failed on server (GET) with status \(http.statusCode).")))
-                }
             }
-        }.resume()
+        }
     }
     
     private var eventsApiBaseURL: URL { // Helper to construct the correct base for these new v1 APIs

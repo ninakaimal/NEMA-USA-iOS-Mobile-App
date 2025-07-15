@@ -54,6 +54,75 @@ struct FamilyMember: Identifiable, Codable {
     var name: String
     var relationship: String
     var email: String?
-    var dob: String?
     var phone: String?
+    var dob: String?
+    let userId: Int
+    let createdAt: String?
+    let updatedAt: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name, fname
+        case relationship
+        case email
+        case phone
+        case dob
+        case userId = "user_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    // Custom decoder to handle both "name" and "fname"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(Int.self, forKey: .id)
+        relationship = try container.decode(String.self, forKey: .relationship)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        dob = try container.decodeIfPresent(String.self, forKey: .dob)
+        userId = try container.decodeIfPresent(Int.self, forKey: .userId) ?? 0 // Provide default value
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        
+        // Try "name" first, then "fname" as fallback
+        if let nameValue = try container.decodeIfPresent(String.self, forKey: .name) {
+            name = nameValue
+        } else if let fnameValue = try container.decodeIfPresent(String.self, forKey: .fname) {
+            name = fnameValue
+        } else {
+            throw DecodingError.keyNotFound(CodingKeys.name, DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "Neither 'name' nor 'fname' found in JSON"
+            ))
+        }
+    }
+    
+    // Custom encoder - always encode as "name" when sending to APIs
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)  // Always use "name" when encoding
+        try container.encode(relationship, forKey: .relationship)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encodeIfPresent(phone, forKey: .phone)
+        try container.encodeIfPresent(dob, forKey: .dob)
+        try container.encode(userId, forKey: .userId)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+    }
+    
+    // Manual initializer for creating new instances
+    init(id: Int, name: String, relationship: String, email: String? = nil, phone: String? = nil, dob: String? = nil, userId: Int, createdAt: String? = nil, updatedAt: String? = nil) {
+        self.id = id
+        self.name = name
+        self.relationship = relationship
+        self.email = email
+        self.phone = phone
+        self.dob = dob
+        self.userId = userId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }

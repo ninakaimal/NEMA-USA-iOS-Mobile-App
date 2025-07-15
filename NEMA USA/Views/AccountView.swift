@@ -48,7 +48,11 @@ struct AccountView: View {
     @State private var editMonth = Calendar.current.component(.month, from: Date())
     @State private var editYear = Calendar.current.component(.year, from: Date())
     
-    // New state variables for profile editing - Family, DOB
+    // Profile user's DOB (not family DOB)
+    @State private var editProfileMonth = Calendar.current.component(.month, from: Date())
+    @State private var editProfileYear = Calendar.current.component(.year, from: Date()) - 30
+    
+    // New state variables for Family DOB
     @State private var editingDOB: [Int: (month: Int, year: Int)] = [:]
     @State private var showDeleteFamilyMemberConfirmation = false
     @State private var familyMemberToDelete: FamilyMember? = nil
@@ -438,6 +442,19 @@ struct AccountView: View {
                 } else {
                     InfoRow(label: "Address", value: profileData.address)
                 }
+                if isEditingProfile {
+                    Text("Date of Birth (Month & Year):").font(.subheadline).fontWeight(.bold)
+                    MonthYearPicker(
+                        selectedMonth: $editProfileMonth,
+                        selectedYear: $editProfileYear
+                    )
+                    .padding(.vertical, 4)
+                } else {
+                    if let dob = profileData.dateOfBirth, !dob.isEmpty {
+                        InfoRow(label: "Date of Birth", value: formattedDOB(from: dob))
+                    }
+                }
+                
                 if !isEditingProfile {
                     InfoRow(
                         label: "Membership Expires",
@@ -763,11 +780,29 @@ struct AccountView: View {
         editName = profile.name
         editPhone = profile.phone
         editAddress = profile.address
+        
+        // Parse DOB for editing
+        if let dob = profile.dateOfBirth, !dob.isEmpty {
+            let components = dob.split(separator: "-")
+            if components.count == 2,
+               let year = Int(components[0]),
+               let month = Int(components[1]) {
+                editProfileYear = year
+                editProfileMonth = month
+            }
+        }
     }
     
     private func saveProfile() {
         isUpdating = true
-        NetworkManager.shared.updateProfile(name: editName, phone: editPhone, address: editAddress) { result in
+        let dobString = String(format: "%04d-%02d", editProfileYear, editProfileMonth)
+
+        NetworkManager.shared.updateProfile(
+            name: editName,
+            phone: editPhone,
+            address: editAddress,
+            dob: dobString
+        ) { result in
             DispatchQueue.main.async {
                 isUpdating = false
                 switch result {
@@ -777,7 +812,8 @@ struct AccountView: View {
                     self.cachedExpiryRaw = updatedProfile.membershipExpiryDate
                     isEditingProfile = false
                     self.loadMembership()
-                case .failure(let err): handlePaymentManagerError(err, context: "profile update")
+                case .failure(let err):
+                    handlePaymentManagerError(err, context: "profile update")
                 }
             }
         }
