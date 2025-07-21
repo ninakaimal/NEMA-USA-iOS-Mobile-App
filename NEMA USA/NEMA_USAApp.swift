@@ -2,7 +2,9 @@
 //  NEMA_USAApp.swift
 //  NEMA USA
 //  Created by Sajith on 4/1/25.
-//
+//  Updated by Sajith for local notifications on 7/21/25.
+
+
 import Kingfisher
 import SwiftUI
 
@@ -13,6 +15,7 @@ struct NEMA_USAApp: App {
 
     @AppStorage("laravelSessionToken") private var authToken: String?
     @State private var passwordResetToken: PasswordResetToken?
+    @State private var eventToDeepLink: String? = nil
 
     init() {
         configureNavigationBarAppearance()
@@ -42,7 +45,7 @@ struct NEMA_USAApp: App {
         // Configure trusted hosts for test environment - disable in production
 //        if let customDownloader = KingfisherManager.shared.downloader as? ImageDownloader {
 //            customDownloader.trustedHosts = ["nemausa.org"]
-//        }                                                                     
+//        }
         print("✅ Kingfisher configured with optimized caching settings")
     }
 
@@ -51,6 +54,10 @@ struct NEMA_USAApp: App {
             ContentView()
                 .onAppear {
                     authToken = nil
+                    // Request notification permissions on app start
+                    Task {
+                        await requestNotificationPermissions()
+                    }
                 }
                 .onOpenURL { url in
                     handleUniversalLink(url: url)
@@ -65,7 +72,40 @@ struct NEMA_USAApp: App {
                         // The individual views (MyEventsView) will handle showing login
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .didDeepLinkToEvent)) { notification in
+                    if let userInfo = notification.userInfo,
+                       let eventId = userInfo["eventId"] as? String,
+                       let source = userInfo["source"] as? String {
+                        print("🔗 [App] Deep link received for event \(eventId) from \(source)")
+                        DispatchQueue.main.async {
+                            eventToDeepLink = eventId
+                        }
+                    }
+                }
+                .sheet(item: Binding<EventDeepLink?>(
+                    get: { eventToDeepLink.map { EventDeepLink(eventId: $0) } },
+                    set: { _ in eventToDeepLink = nil }
+                )) { deepLink in
+                    // Navigate to EventDetailView when deep link is triggered
+                    EventDeepLinkView(eventId: deepLink.eventId)
+                }
         }
+    }
+    
+    private func requestNotificationPermissions() async {
+        var prefs = DatabaseManager.shared.notificationPreferences
+        
+        // Only request if we haven't asked before
+        guard !prefs.hasRequestedPermission else {
+            print("📱 [App] Notification permission already requested")
+            return
+        }
+        
+        let granted = await NotificationManager.shared.requestNotificationPermission()
+        prefs.hasRequestedPermission = true
+        prefs.isEnabled = granted
+        DatabaseManager.shared.notificationPreferences = prefs
+        print("📱 [App] Notification permission granted: \(granted)")
     }
 
     private func handleUniversalLink(url: URL) {
@@ -80,9 +120,75 @@ struct NEMA_USAApp: App {
     }
 }
 
+// MARK: - Supporting Types
+
 // Clearly defined within the same file
 struct PasswordResetToken: Identifiable {
     let id: String
+}
+
+struct EventDeepLink: Identifiable {
+    let id = UUID()
+    let eventId: String
+}
+
+struct EventDeepLinkView: View {
+    let eventId: String
+    @StateObject private var eventRepository = EventRepository()
+    @Environment(\.presentationMode) private var presentationMode
+    
+    var body: some View {
+        NavigationView {
+            Group {
+                if let event = eventRepository.events.first(where: { $0.id == eventId }) {
+                    EventDetailView(event: event)
+                } else if eventRepository.isLoading {
+                    VStack {
+                        ProgressView()
+                        Text("Loading event details...")
+                            .padding(.top)
+                    }
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.system(size: 50))
+                            .foregroundColor(.orange)
+                        Text("Event Not Found")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                        Text("The event you're looking for might have been removed or is no longer available.")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                        Button("Close") {
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.orange)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                    }
+                    .padding()
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .foregroundColor(.white)
+                }
+            }
+        }
+        .task {
+            if eventRepository.events.isEmpty {
+                await eventRepository.loadEventsFromCoreData()
+                await eventRepository.syncAllEvents()
+            }
+        }
+    }
 }
 
 private func configureNavigationBarAppearance() {

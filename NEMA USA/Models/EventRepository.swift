@@ -3,7 +3,8 @@
 //  NEMA USA
 //  Created by Nina on 4/15/25.
 // Updated by Sajith on 5/22/2025
-//
+// Updated by Sajith on 7/21/25 - Local Notifications support
+
 import Foundation
 
 import Foundation
@@ -17,6 +18,7 @@ class EventRepository: ObservableObject {
     
     private let networkManager = NetworkManager.shared
     private let viewContext: NSManagedObjectContext
+    private let notificationManager = NotificationManager.shared
     
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.viewContext = context
@@ -130,6 +132,9 @@ class EventRepository: ObservableObject {
             }
             await loadEventsFromCoreData() // fetchLimit: 10) // Keep this limit if needed to update the UI with a limited set
             
+            // Schedule notifications for newly synced events
+            await scheduleNotificationsForEvents()
+            
         } catch let networkError as NetworkError { // Catch specific NetworkError
             lastSyncErrorMessage = "Network Error during event sync: \(networkError)"
             print("❌ [EventRepository] Network error syncing events: \(networkError)")
@@ -140,6 +145,28 @@ class EventRepository: ObservableObject {
         isLoading = false
     }
     
+    private func scheduleNotificationsForEvents() async {
+        // Only schedule if notifications are enabled
+        guard notificationManager.areNotificationsEnabled else {
+            print("🔕 [EventRepository] Notifications disabled, skipping scheduling")
+            return
+        }
+        
+        // Get upcoming events only
+        let upcomingEvents = events.filter { event in
+            guard let eventDate = event.date else { return false }
+            return eventDate > Date()
+        }
+        
+        print("📅 [EventRepository] Scheduling notifications for \(upcomingEvents.count) upcoming events")
+        await notificationManager.scheduleEventNotifications(for: upcomingEvents)
+    }
+    
+    // Public method to refresh notifications (called when settings change)
+    func refreshNotifications() async {
+        await scheduleNotificationsForEvents()
+    }
+
     // Method to sync ticket types for a specific event
     @MainActor
     func syncTicketTypes(forEventID eventID: String, eventCDObject: CDEvent? = nil) async {

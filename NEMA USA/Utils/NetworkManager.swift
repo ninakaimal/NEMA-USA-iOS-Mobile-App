@@ -1220,51 +1220,41 @@ final class NetworkManager: NSObject {
 
         print("🚀 [NetworkManager] Fetching eligible participants for program \(programId) from URL: \(url.absoluteString)")
 
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            // ADD THESE DEBUG PRINTS (make sure they are not commented out):
-            if let httpResponse = response as? HTTPURLResponse {
-                print("DEBUG: [getEligibleParticipants] HTTP Status: \(httpResponse.statusCode)")
-                if let responseBody = String(data: data, encoding: .utf8) {
-                    print("DEBUG: [getEligibleParticipants] Response Body (first 500 chars): \(String(responseBody.prefix(500)))")
+        // Use performRequest with completion-based API converted to async
+        return try await withCheckedThrowingContinuation { continuation in
+            performRequest(request) { result in
+                switch result {
+                case .success(let data):
+                    do {
+                        let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
+                        print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
+                        continuation.resume(returning: decodedParticipants)
+                    } catch {
+                        print("❌ [NetworkManager] getEligibleParticipants: Caught decoding/network error: \(error)")
+                        // Keep the original detailed error logging
+                        if let decodingError = error as? DecodingError {
+                            switch decodingError {
+                            case .typeMismatch(let type, let context):
+                                print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+                            case .valueNotFound(let type, let context):
+                                print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
+                            case .keyNotFound(let key, let context):
+                                print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
+                            case .dataCorrupted(let context):
+                                print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
+                            @unknown default:
+                                print("Unknown decoding error.")
+                            }
+                            continuation.resume(throwing: NetworkError.decodingError(error))
+                        } else {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("❌ [NetworkManager] getEligibleParticipants: Network request failed: \(error)")
+                    continuation.resume(throwing: error)
                 }
-            } else {
-                print("DEBUG: [getEligibleParticipants] Response is not HTTPURLResponse. Type: \(type(of: response))")
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
-                print("❌ [NetworkManager] getEligibleParticipants: HTTP Error. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). Body: \(errorBody)")
-                throw NetworkError.serverError("Failed to fetch eligible participants. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0). Error Body: \(errorBody)")
-            }
-
-            let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
-            print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
-            // Optional: Print first few decoded participants for verification
-            // for (index, member) in decodedParticipants.prefix(3).enumerated() {
-            //    print("   Participant \(index): ID=\(member.id), Name=\(member.name)")
-            // }
-            return decodedParticipants
-        } catch {
-            print("❌ [NetworkManager] getEligibleParticipants: Caught decoding/network error: \(error)")
-            // Ensure that NetworkError.decodingError also has full details
-            if let decodingError = error as? DecodingError {
-                switch decodingError {
-                case .typeMismatch(let type, let context):
-                    print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
-                case .valueNotFound(let type, let context):
-                    print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
-                case .keyNotFound(let key, let context):
-                    print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
-                case .dataCorrupted(let context):
-                    print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
-                @unknown default:
-                    print("Unknown decoding error.")
-                }
-                throw NetworkError.decodingError(error) // Re-throw the structured error
-            } else {
-                throw error // Re-throw other errors (e.g., URLSession errors)
             }
         }
     }

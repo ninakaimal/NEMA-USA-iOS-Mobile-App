@@ -1,9 +1,9 @@
 //
-//  ServiceDelegate.swift
-//  NEMA USA
+// ServiceDelegate.swift
+// NEMA USA
 //
-//  Created by Sajith on 4/18/25.
-//
+// Created by Sajith on 4/18/25.
+// Updated by Sajith on 7/21/25 - Handle Local Notifications
 
 import UIKit
 import UserNotifications
@@ -16,8 +16,8 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         
-        // Register PayPal Observer - no longer used but keeping for history
-        // paypalHandler.registerCallbackObserver()
+        // Configure local notifications
+        configureLocalNotifications()
         
         // OneSignal Initialization
         configureOneSignal(with: launchOptions)
@@ -25,8 +25,12 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
         return true
     }
     
-    private func configureOneSignal(with launchOptions: [UIApplication.LaunchOptionsKey: Any]?) {
+    private func configureLocalNotifications() {
         UNUserNotificationCenter.current().delegate = self
+        print("📱 [ServiceDelegate] Local notification center delegate set")
+    }
+    
+    private func configureOneSignal(with launchOptions: [UIApplication.LaunchOptionsKey: Any]?) {
         
         let onesignalAppId = "9bbb3fd6-51d9-4eba-9644-1f34562cad65"
         OneSignal.initialize(onesignalAppId, withLaunchOptions: launchOptions)
@@ -35,6 +39,8 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
             print("OneSignal permission accepted: \(accepted)")
         }
     }
+    
+    // MARK: - UNUserNotificationCenterDelegate
     
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -51,12 +57,25 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if let additional = userInfo["additionalData"] as? [AnyHashable: Any],
-           let eventId = additional["eventId"] as? String {
+        
+        // Handle local event reminder notifications
+        if let type = userInfo["type"] as? String, type == "localEventReminder",
+           let eventId = userInfo["eventId"] as? String {
+            print("📱 [ServiceDelegate] Local event notification tapped for event: \(eventId)")
             NotificationCenter.default.post(
                 name: .didDeepLinkToEvent,
                 object: nil,
-                userInfo: ["eventId": eventId]
+                userInfo: ["eventId": eventId, "source": "localNotification"]
+            )
+        }
+        
+        else if let additional = userInfo["additionalData"] as? [AnyHashable: Any],
+           let eventId = additional["eventId"] as? String {
+            print("📱 [ServiceDelegate] OneSignal notification tapped for event: \(eventId)")
+            NotificationCenter.default.post(
+                name: .didDeepLinkToEvent,
+                object: nil,
+                userInfo: ["eventId": eventId, "source": "oneSignal"]
             )
         }
         completionHandler()

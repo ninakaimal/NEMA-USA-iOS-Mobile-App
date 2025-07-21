@@ -1,7 +1,8 @@
 // DatabaseManager.swift
 // NEMA USA
 // Created by Nina on 4/16/25.
-// Updated by Sajith on 4/21/25.
+// Updated by Sajith on 4/21/25
+// Updated by Nina on 7/21/25 - Added notification preferences
 
 import Foundation
 
@@ -25,6 +26,30 @@ final class DatabaseManager {
     // Key for cached family list
     private let familyKey              = "familyList"
 
+    // MARK: - Notification Settings
+    private let notificationPreferencesKey = "notificationPreferences"
+    
+    struct NotificationPreferences: Codable {
+        var isEnabled: Bool = false
+        var enable24Hours: Bool = true
+        var enable90Minutes: Bool = true
+        var hasRequestedPermission: Bool = false
+    }
+    
+    var notificationPreferences: NotificationPreferences {
+        get {
+            guard let data = defaults.data(forKey: notificationPreferencesKey),
+                  let prefs = try? JSONDecoder().decode(NotificationPreferences.self, from: data) else {
+                return NotificationPreferences()
+            }
+            return prefs
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: notificationPreferencesKey)
+            }
+        }
+    }
 
     // MARK: – Laravel scraping session token
 
