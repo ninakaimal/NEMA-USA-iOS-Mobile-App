@@ -4,6 +4,7 @@
 //
 //  Created by Nina Kaimal on 6/27/25.
 //
+
 import SwiftUI
 
 struct PurchaseDetailView: View {
@@ -12,51 +13,42 @@ struct PurchaseDetailView: View {
     @Environment(\.presentationMode) private var presentationMode
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Hero Header Section
+                HeroHeaderSection(record: record)
+                    .padding(.top, 20)
+                    
                     if viewModel.isLoading {
-                        ProgressView("Loading details...")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding(.top, 100)
+                        LoadingStateView()
                     } else if let errorMessage = viewModel.errorMessage {
                         ErrorStateView(message: errorMessage) {
-                            Task {
-                                await viewModel.loadDetails(for: record)
-                            }
+                            Task { await viewModel.loadDetails(for: record) }
                         }
                     } else {
-                        VStack(spacing: 20) {
-                            // Header Section
-                            HeaderSection(record: record)
-                            
-                            if record.type == "Ticket Purchase" {
-                                TicketDetailsSection(ticketDetail: viewModel.ticketDetail)
-                            } else {
-                                ProgramDetailsSection(programDetail: viewModel.programDetail)
-                            }
+                        // Details Section
+                        if record.type == "Ticket Purchase" {
+                            TicketDetailsSection(ticketDetail: viewModel.ticketDetail)
+                        } else {
+                            ProgramDetailsSection(programDetail: viewModel.programDetail)
                         }
-                        .padding()
                     }
+                    
+                    Spacer(minLength: 20)
                 }
+                .padding(.horizontal, 20)
             }
-            .navigationTitle("Purchase Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-            }
-        }
+        .navigationTitle("Purchase Details")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(false)
         .task {
             await viewModel.loadDetails(for: record)
         }
     }
 }
 
-struct HeaderSection: View {
+// MARK: - Hero Header Section
+struct HeroHeaderSection: View {
     let record: PurchaseRecord
     
     private var eventDateText: String {
@@ -77,248 +69,473 @@ struct HeaderSection: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Event Name
-            Text(record.eventName)
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.primary)
-            
-            // Type and Status
+        VStack(spacing: 20) {
+            // Status Badge
             HStack {
-                Label(record.type, systemImage: record.type == "Ticket Purchase" ? "ticket" : "person.2")
-                    .font(.subheadline)
-                    .foregroundColor(.orange)
-                
                 Spacer()
-                
-                Text(record.status)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(statusColor)
-                    .cornerRadius(8)
+                StatusBadge(status: record.status)
             }
             
-            Divider()
-            
-            // Event Date
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Event Date", systemImage: "calendar")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text(eventDateText)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Purchase Date
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Purchase Date", systemImage: "clock")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text(purchaseDateText)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Amount
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Total Amount", systemImage: "dollarsign.circle")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text(record.displayAmount)
-                    .font(.title3)
+            VStack(spacing: 16) {
+                // Event Name
+                Text(record.eventName)
+                    .font(.title)
                     .fontWeight(.bold)
-                    .foregroundColor(.green)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                
+                // Type Badge
+                HStack(spacing: 8) {
+                    Image(systemName: record.type == "Ticket Purchase" ? "ticket.fill" : "person.2.fill")
+                        .foregroundColor(.orange)
+                    Text(record.type)
+                        .fontWeight(.medium)
+                }
+                .font(.subheadline)
+                .foregroundColor(.orange)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(20)
+                
+                // Amount - Prominent display
+                VStack(spacing: 4) {
+                    Text("Total Amount")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(record.displayAmount)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                }
+            }
+            
+            // Quick Info Cards
+            HStack(spacing: 12) {
+                QuickInfoCard(
+                    icon: "calendar",
+                    title: "Event Date",
+                    value: eventDateText
+                )
+                
+                QuickInfoCard(
+                    icon: "clock",
+                    title: "Purchased",
+                    value: purchaseDateText
+                )
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
-    }
-    
-    private var statusColor: Color {
-        switch record.status.lowercased() {
-        case "paid", "success":
-            return .green
-        case "wait_list", "wait list":
-            return .orange
-        case "pending":
-            return .yellow
-        default:
-            return .gray
-        }
+        .padding(24)
+        .background(Color(.systemBackground))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.orange, lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
 }
 
+// MARK: - Quick Info Card
+struct QuickInfoCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(.orange)
+            
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .bold()
+                
+                Text(value)
+                    .font(.caption)
+                    .bold()
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+}
+
+// MARK: - Status Badge
+struct StatusBadge: View {
+    let status: String
+    
+    private var statusConfig: (color: Color, icon: String) {
+        switch status.lowercased() {
+        case "paid", "success":
+            return (.green, "checkmark.circle.fill")
+        case "wait_list", "wait list":
+            return (.orange, "clock.fill")
+        case "pending":
+            return (.yellow, "hourglass")
+        default:
+            return (.gray, "questionmark.circle.fill")
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: statusConfig.icon)
+                .font(.caption)
+            Text(status.uppercased())
+                .font(.caption2)
+                .fontWeight(.bold)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(statusConfig.color)
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 2)
+    }
+}
+
+// MARK: - Enhanced Ticket Details Section
 struct TicketDetailsSection: View {
     let ticketDetail: TicketPurchaseDetailResponse?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Ticket Details")
-                .font(.headline)
-                .foregroundColor(.primary)
+        VStack(spacing: 20) {
+            SectionHeader(title: "Ticket Details", icon: "ticket.fill")
             
             if let detail = ticketDetail {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Contact Information
-                    GroupBox("Contact Information") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DetailRow(label: "Name", value: detail.purchase.name)
-                            DetailRow(label: "Email", value: detail.purchase.email)
-                            DetailRow(label: "Phone", value: detail.purchase.phone)
+                VStack(spacing: 16) {
+                    // Ticket Types - Moved up first
+                    ModernCard {
+                        CardHeader(title: "Tickets Purchased", icon: "ticket")
+                        
+                        VStack(spacing: 12) {
+                            ForEach(detail.purchase.details.indices, id: \.self) { index in
+                                let ticketDetail = detail.purchase.details[index]
+                                TicketRow(ticketDetail: ticketDetail)
+                                
+                                if index < detail.purchase.details.count - 1 {
+                                    DividerLine()
+                                }
+                            }
                         }
                     }
                     
-                    // Ticket Types
-                    GroupBox("Tickets Purchased") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(detail.purchase.details.indices, id: \.self) { index in
-                                let ticketDetail = detail.purchase.details[index]
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(ticketDetail.ticketType.typeName)
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                        Text("\(ticketDetail.no) ticket\(ticketDetail.no > 1 ? "s" : "")")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Text("$\(String(format: "%.2f", ticketDetail.amount))")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                }
-                                
-                                if index < detail.purchase.details.count - 1 {
-                                    Divider()
-                                }
-                            }
+                    // Contact Information - Moved below tickets
+                    ModernCard {
+                        CardHeader(title: "Contact Information", icon: "person.fill")
+                        
+                        VStack(spacing: 12) {
+                            InfoRow(icon: "person", label: "Name", value: detail.purchase.name)
+                            InfoRow(icon: "envelope", label: "Email", value: detail.purchase.email)
+                            InfoRow(icon: "phone", label: "Phone", value: detail.purchase.phone)
                         }
                     }
                     
                     // Panthi Information (if applicable)
                     if let panthi = detail.purchase.panthi {
-                        GroupBox("Seating Assignment") {
-                            DetailRow(label: "Panthi", value: panthi.title)
+                        ModernCard {
+                            CardHeader(title: "Seating Assignment", icon: "map")
+                            InfoRow(icon: "location", label: "Panthi", value: panthi.title)
                         }
                     }
                     
                     // PDF Download (if available)
                     if let pdfUrl = detail.pdfUrl {
-                        Button(action: {
-                            if let url = URL(string: pdfUrl) {
-                                UIApplication.shared.open(url)
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "doc.fill")
-                                Text("Download Ticket PDF")
-                                Spacer()
-                                Image(systemName: "arrow.down.circle")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.orange)
-                            .cornerRadius(10)
-                        }
+                        DownloadButton(pdfUrl: pdfUrl)
                     }
                 }
             } else {
-                Text("Loading ticket details...")
-                    .foregroundColor(.secondary)
+                LoadingCard(message: "Loading ticket details...")
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
     }
 }
 
+// MARK: - Enhanced Program Details Section
 struct ProgramDetailsSection: View {
     let programDetail: Participant?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Registration Details")
-                .font(.headline)
-                .foregroundColor(.primary)
+        VStack(spacing: 20) {
+            SectionHeader(title: "Registration Details", icon: "person.2.fill")
             
             if let detail = programDetail {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(spacing: 16) {
                     // Program Information
-                    GroupBox("Program Information") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DetailRow(label: "Program", value: detail.category.programs.name)
-                            DetailRow(label: "Category", value: detail.category.age.name)
+                    ModernCard {
+                        CardHeader(title: "Program Information", icon: "flag.fill")
+                        
+                        VStack(spacing: 12) {
+                            InfoRow(icon: "flag", label: "Program", value: detail.category.programs.name)
+                            InfoRow(icon: "tag", label: "Category", value: detail.category.age.name)
                             if let comments = detail.comments, !comments.isEmpty {
-                                DetailRow(label: "Comments", value: comments)
+                                InfoRow(icon: "text.bubble", label: "Comments", value: comments)
                             }
                         }
                     }
                     
                     // Participants
-                    GroupBox("Registered Participants") {
-                        VStack(alignment: .leading, spacing: 8) {
+                    ModernCard {
+                        CardHeader(title: "Registered Participants", icon: "person.3")
+                        
+                        VStack(spacing: 12) {
                             ForEach(detail.details.indices, id: \.self) { index in
                                 let participant = detail.details[index]
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(participant.name)
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                        if let age = participant.age {
-                                            Text("Age: \(age)")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-                                    Spacer()
-                                }
+                                ParticipantRow(participant: participant)
                                 
                                 if index < detail.details.count - 1 {
-                                    Divider()
+                                    DividerLine()
                                 }
                             }
                         }
                     }
                 }
             } else {
-                Text("Loading registration details...")
-                    .foregroundColor(.secondary)
+                LoadingCard(message: "Loading registration details...")
             }
         }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
     }
 }
 
-struct DetailRow: View {
+// MARK: - Reusable Components
+
+struct SectionHeader: View {
+    let title: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(.orange)
+            
+            Text(title)
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+    }
+}
+
+struct ModernCard<Content: View>: View {
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            content
+        }
+        .padding(20)
+        .background(Color(.systemBackground))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
+    }
+}
+
+struct CardHeader: View {
+    let title: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.headline)
+                .foregroundColor(.orange)
+            
+            Text(title)
+                .font(.headline)
+                .bold()
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+        .padding(.bottom, 4)
+    }
+}
+
+struct InfoRow: View {
+    let icon: String
     let label: String
     let value: String
     
     var body: some View {
-        HStack {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundColor(.orange)
+                .frame(width: 20)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .bold()
+                
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .bold()
+            }
+            
             Spacer()
-            Text(value)
-                .font(.caption)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.trailing)
         }
+        .padding(.vertical, 4)
+    }
+}
+
+struct TicketRow: View {
+    let ticketDetail: TicketPurchaseDetail
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "ticket")
+                .font(.subheadline)
+                .foregroundColor(.orange)
+                .frame(width: 20)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(ticketDetail.ticketType.typeName)
+                    .font(.subheadline)
+                    .bold()
+                    .foregroundColor(.primary)
+                
+                Text("\(ticketDetail.no) ticket\(ticketDetail.no > 1 ? "s" : "")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Text("$\(String(format: "%.2f", ticketDetail.amount))")
+                .font(.subheadline)
+                .fontWeight(.bold)
+                .foregroundColor(.green)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct ParticipantRow: View {
+    let participant: ParticipantDetail
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.fill")
+                .font(.subheadline)
+                .foregroundColor(.orange)
+                .frame(width: 20)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(participant.name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                
+                if let age = participant.age {
+                    Text("Age: \(age)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct DividerLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color(.systemGray5))
+            .frame(height: 1)
+            .padding(.horizontal, 20)
+    }
+}
+
+struct DownloadButton: View {
+    let pdfUrl: String
+    
+    var body: some View {
+        Button(action: {
+            if let url = URL(string: pdfUrl) {
+                UIApplication.shared.open(url)
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.fill")
+                    .font(.headline)
+                
+                Text("Download Ticket PDF")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title3)
+            }
+            .foregroundColor(.white)
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [Color.orange, Color.orange.opacity(0.8)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(16)
+            .shadow(color: .orange.opacity(0.3), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct LoadingCard: View {
+    let message: String
+    
+    var body: some View {
+        ModernCard {
+            HStack(spacing: 12) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                
+                Text(message)
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+        }
+    }
+}
+
+struct LoadingStateView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading details...")
+                .foregroundColor(.secondary)
+                .font(.subheadline)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
     }
 }
 
@@ -327,29 +544,33 @@ struct ErrorStateView: View {
     let retryAction: () -> Void
     
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 50))
-                .foregroundColor(.orange)
-            
-            Text("Error Loading Details")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text(message)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .padding(.horizontal)
-            
-            Button("Try Again", action: retryAction)
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding()
-                .background(Color.orange)
-                .cornerRadius(10)
+        ModernCard {
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(.orange)
+                
+                VStack(spacing: 8) {
+                    Text("Error Loading Details")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    
+                    Text(message)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                }
+                
+                Button("Try Again", action: retryAction)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.orange)
+                    .cornerRadius(12)
+            }
+            .padding(.vertical, 20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 }
 
@@ -366,5 +587,7 @@ struct ErrorStateView: View {
         detailId: 123
     )
     
-    PurchaseDetailView(record: sampleRecord)
+    NavigationView {
+        PurchaseDetailView(record: sampleRecord)
+    }
 }

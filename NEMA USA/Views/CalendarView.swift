@@ -10,6 +10,7 @@ import SwiftUI
 struct CalendarView: View {
     // 1. Use EventRepository
     @StateObject private var eventRepository = EventRepository()
+    @StateObject private var eventStatusService = EventStatusService.shared
     @State private var selectedDate: Date? = Date()
     @State private var displayedMonth      = Calendar.current.component(.month, from: Date())
     @State private var displayedYear       = Calendar.current.component(.year,  from: Date())
@@ -174,7 +175,10 @@ struct CalendarView: View {
                         LazyVStack(spacing: 16) {
                             ForEach(list) { ev in
                                 NavigationLink(destination: EventDetailView(event: ev)) {
-                                    EventCard(event: ev)
+                                    EventCard(
+                                        event: ev,
+                                        userStatuses: eventStatusService.getUserStatuses(for: ev)
+                                    )
                                 }
                             }
                         }
@@ -294,4 +298,3 @@ struct DayCell: View {
         .cornerRadius(10)
     }
 }
-

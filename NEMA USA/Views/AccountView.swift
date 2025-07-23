@@ -329,7 +329,7 @@ struct AccountView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if DatabaseManager.shared.jwtApiToken == nil || authToken == nil {
+        if DatabaseManager.shared.jwtApiToken == nil {
             LoginView()
         } else if profile == nil && !isUpdating {
             ProgressView("Loading Account…")
@@ -344,32 +344,33 @@ struct AccountView: View {
     }
     
     private var toolbarButtons: some View {
-        HStack {
-            if authToken != nil {
-                if isEditingProfile || isEditingFamily {
-                    Button("Save") {
-                        if isEditingProfile { saveProfile() }
-                        if isEditingFamily { saveFamily() }
+            HStack {
+                // Only check JWT token for toolbar functionality
+                if DatabaseManager.shared.jwtApiToken != nil {
+                    if isEditingProfile || isEditingFamily {
+                        Button("Save") {
+                            if isEditingProfile { saveProfile() }
+                            if isEditingFamily { saveFamily() }
+                        }
+                        .disabled(isUpdating || isProcessingMembershipAction)
+                        Button("Cancel") {
+                            isEditingProfile = false
+                            isEditingFamily = false
+                            if let p = profile { setDataForEditing(profile: p) } // Reset edit fields
+                            loadFamily() // Revert family edits by reloading
+                        }
+                    } else {
+                        Button("Edit Profile") {
+                            if let p = profile { setDataForEditing(profile: p) }
+                            isEditingProfile = true
+                            isEditingFamily = false
+                        }
+                        Button("Logout") { showLogoutConfirmation = true }
                     }
-                    .disabled(isUpdating || isProcessingMembershipAction)
-                    Button("Cancel") {
-                        isEditingProfile = false
-                        isEditingFamily = false
-                        if let p = profile { setDataForEditing(profile: p) } // Reset edit fields
-                        loadFamily() // Revert family edits by reloading
-                    }
-                } else {
-                    Button("Edit Profile") {
-                        if let p = profile { setDataForEditing(profile: p) }
-                        isEditingProfile = true
-                        isEditingFamily = false
-                    }
-                    Button("Logout") { showLogoutConfirmation = true }
                 }
             }
+            .foregroundColor(.white) // Note: .navigationBarItems might need .tint(.white) on NavigationView in some iOS versions
         }
-        .foregroundColor(.white) // Note: .navigationBarItems might need .tint(.white) on NavigationView in some iOS versions
-    }
     
     private func profileScroll(profileData: UserProfile) -> some View {
         ZStack(alignment: .top) {
@@ -397,6 +398,7 @@ struct AccountView: View {
                         }
                         
                         // Required "Delete Account" button with new, subtle style
+                        /*
                         Button("Delete Account", role: .destructive, action: {
                             deleteConfirmationText = "" // Reset text field before showing sheet
                             showingDeleteConfirmation = true
@@ -404,6 +406,7 @@ struct AccountView: View {
                         .font(.footnote)
                         .foregroundColor(.red)
                         .padding(.top, 5) // Adds a little space above it
+                         */
                     }
                     .padding() // Apply padding to the whole management section
                     Spacer(minLength: 32)
@@ -566,186 +569,290 @@ struct AccountView: View {
         }
     }
     private var familySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Your Family").font(.headline)
+                Text("Family Members").font(.title2).fontWeight(.semibold)
                 Spacer()
-                if authToken != nil {
+                if DatabaseManager.shared.jwtApiToken != nil {
                     if isEditingFamily {
                         // "Add New Member" button
                         Button {
                             // Reset state for the Add Member sheet before showing it
                             self.newMemberName = ""
-                            self.newMemberRelationship = self.relationshipOptions.first ?? "spouse" // Default
-                            self.newMemberEmail = ""    // Reset to empty or nil
-                            self.newMemberPhone = ""    // Reset to empty or nil
-                            // Default DOB (e.g., 25 years ago)
+                            self.newMemberRelationship = self.relationshipOptions.first ?? "spouse"
+                            self.newMemberEmail = ""
+                            self.newMemberPhone = ""
                             self.newMemberDOBMonth = Calendar.current.component(.month, from: Date())
                             self.newMemberDOBYear = Calendar.current.component(.year, from: Date()) - 25
 
                             self.showingAddMemberSheet = true
                         } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .imageScale(.large)
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Add")
+                            }
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
                         }
-                        .foregroundColor(.orange)
 
-                        Spacer() // Pushes Save and Done to the right
+                        Spacer()
 
-                        Button("Save All") { // Renamed for clarity, saves all edits
+                        Button("Save") {
                             saveFamily()
                         }
+                        .font(.subheadline)
                         .foregroundColor(.orange)
                         .disabled(isUpdating)
 
-                        Button("Done") { // Renamed for clarity
+                        Button("Cancel") {
                             isEditingFamily = false
-                            // Optionally, reload family to discard any un-added but edited fields
-                            // if your saveFamily doesn't already handle reverting non-submitted changes.
-                            // loadFamily()
+                            // Reload family data to discard any unsaved changes
+                            loadFamily()
+                            // Clear any temporary editing state
+                            editingDOB = [:]
                         }
+                        .font(.subheadline)
                         .foregroundColor(.orange)
                     } else {
-                        Button("Manage Family") { // This was "Edit" before
+                        Button("Edit Family") {
                             isEditingFamily = true
                             isEditingProfile = false
-                        }.foregroundColor(.orange)
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
                     }
                 }
             }
             .padding(.horizontal)
             
             if isLoadingFamily {
-                ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .orange)).padding()
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                    Spacer()
+                }
+                .padding()
             } else if family.isEmpty {
-                Text("No family members added yet. Tap 'Edit' to add.").font(.subheadline).foregroundColor(.gray)
-                    .padding().frame(maxWidth: .infinity, alignment: .center)
-            } else {
-                VStack(spacing: 12) { // This VStack will group all family member cards
-                    ForEach($family) { $member in
-                        VStack(alignment: .leading, spacing: 8) {
-                            EditableInfoRow(label: "Name", text: $member.name, isEditing: isEditingFamily)
-                            // Relationship picker
-                            if isEditingFamily {
-                                Button(role: .destructive) {
-                                    self.familyMemberToDelete = member // Store the member to delete
-                                    self.showDeleteFamilyMemberConfirmation = true // Show confirmation alert
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "trash")
-                                      //  Text("Delete This Member")
-                                    }
-                                    .foregroundColor(.red)
-                                    .frame(maxWidth: .infinity, alignment: .center) // Or .trailing if you prefer
-                                }
-                                .padding(.top, 8) // Add some spacing before the button
-                                //}
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Relation:")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                    Picker("Relation", selection: $member.relationship) {
-                                        ForEach(relationshipOptions, id: \.self) { option in
-                                            Text(option.capitalized).tag(option)
-                                        }
-                                    }
-                                    .pickerStyle(MenuPickerStyle())
-                                    .padding(.vertical, 4)
-                                    .frame(minHeight: 25)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    Divider()
-                                }
-                            } else {
-                                // Revert to VStack for stacked display when not editing, to match Screenshot 2
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Relation:") // Label
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                    Text(member.relationship.capitalized) // Value
-                                        .font(.subheadline)
-                                        .foregroundColor(.primary) // Or your desired color for values
-                                        .padding(.vertical, 4) // Match padding if EditableInfoRow has it
-                                }
-                                // Divider()
-                            }
-                            
-                            // Phone field
-                            EditableInfoRow(label: "Phone", text: Binding(
-                                get: { member.phone ?? "" }, set: { member.phone = $0.isEmpty ? nil : $0 }
-                            ), isEditing: isEditingFamily, keyboardType: .phonePad)
-                            
-                            EditableInfoRow(label: "Email", text: Binding(
-                                get: { member.email ?? "" }, set: { member.email = $0.isEmpty ? nil : $0 }
-                            ), isEditing: isEditingFamily, keyboardType: .emailAddress)
-                            
-                            // DOB picker
-                            if isEditingFamily {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("DOB (Month & Year):*")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                    
-                                    MonthYearPicker(
-                                        selectedMonth: Binding(
-                                            get: { editingDOB[member.id]?.month ?? currentMonth(from: member.dob) },
-                                            set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].month = $0 }
-                                        ),
-                                        selectedYear: Binding(
-                                            get: { editingDOB[member.id]?.year ?? currentYear(from: member.dob) },
-                                            set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].year = $0 }
-                                        )
-                                    )
-                                    .padding(.vertical, 1)
-                                    Divider()
-                                }
-                            } else { // ✅ ADD THIS BLOCK
-                                if let dob = member.dob, !dob.isEmpty {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("DOB:")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        Text(formattedDOB(from: member.dob))
-                                            .font(.subheadline)
-                                            .padding(.vertical, 4)
-                                    }
-                                }
-                            }
-                            
-                        }
-                        .padding() // Inner padding for content within the card
-                        .frame(maxWidth: .infinity, alignment: .leading) // Make VStack take full width
-                        .background(Color(.secondarySystemBackground)) // Apply background to full-width VStack
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 0.4) // subtle border
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray.opacity(0.6))
+                    
+                    Text("No family members added yet")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    if !isEditingFamily {
+                        Text("Tap 'Edit Family' to add family members")
+                            .font(.caption)
+                            .foregroundColor(.gray)
                     }
                 }
-                .padding(.horizontal) // Apply horizontal padding to the group of cards
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach($family) { $member in
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Header with name and delete button
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if isEditingFamily {
+                                        TextField("Name", text: $member.name)
+                                            .font(.headline)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    } else {
+                                        Text(member.name)
+                                            .font(.headline)
+                                            .fontWeight(.medium)
+                                    }
+                                    
+                                    Text(member.relationship.capitalized)
+                                        .font(.subheadline)
+                                        .foregroundColor(.orange)
+                                        .fontWeight(.medium)
+                                }
+                                
+                                Spacer()
+                                
+                                if isEditingFamily {
+                                    Button {
+                                        self.familyMemberToDelete = member
+                                        self.showDeleteFamilyMemberConfirmation = true
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.red)
+                                            .font(.title3)
+                                    }
+                                }
+                            }
+                            
+                            // Contact details - ONLY show fields that have values (unless editing)
+                            VStack(alignment: .leading, spacing: 12) {
+                                if isEditingFamily {
+                                    // Show all fields in edit mode
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        // Relationship
+                                        HStack {
+                                            Text("Relationship:")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                                .frame(width: 100, alignment: .leading)
+                                            
+                                            Picker("Relationship", selection: $member.relationship) {
+                                                ForEach(relationshipOptions, id: \.self) { option in
+                                                    Text(option.capitalized).tag(option)
+                                                }
+                                            }
+                                            .pickerStyle(MenuPickerStyle())
+                                        }
+                                        
+                                        // Phone
+                                        HStack {
+                                            Text("Phone:")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                                .frame(width: 100, alignment: .leading)
+                                            
+                                            TextField("Phone number", text: Binding(
+                                                get: { member.phone ?? "" },
+                                                set: { member.phone = $0.isEmpty ? nil : $0 }
+                                            ))
+                                            .keyboardType(.phonePad)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        }
+                                        
+                                        // Email
+                                        HStack {
+                                            Text("Email:")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                                .frame(width: 100, alignment: .leading)
+                                            
+                                            TextField("Email address", text: Binding(
+                                                get: { member.email ?? "" },
+                                                set: { member.email = $0.isEmpty ? nil : $0 }
+                                            ))
+                                            .keyboardType(.emailAddress)
+                                            .autocapitalization(.none)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        }
+                                        
+                                        // Date of Birth
+                                        HStack {
+                                            Text("Birth Date:")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                                .frame(width: 100, alignment: .leading)
+                                            
+                                            MonthYearPicker(
+                                                selectedMonth: Binding(
+                                                    get: { editingDOB[member.id]?.month ?? currentMonth(from: member.dob) },
+                                                    set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].month = $0 }
+                                                ),
+                                                selectedYear: Binding(
+                                                    get: { editingDOB[member.id]?.year ?? currentYear(from: member.dob) },
+                                                    set: { editingDOB[member.id, default: (currentMonth(from: member.dob), currentYear(from: member.dob))].year = $0 }
+                                                )
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // View mode - ONLY show fields with values
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        // Phone - only if has value
+                                        if let phone = member.phone, !phone.isEmpty {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "phone.fill")
+                                                    .foregroundColor(.orange)
+                                                    .font(.system(size: 14))
+                                                    .frame(width: 16)
+                                                Text("Phone:")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.medium)
+                                                Text(phone)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+                                        
+                                        // Email - only if has value
+                                        if let email = member.email, !email.isEmpty {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "envelope.fill")
+                                                    .foregroundColor(.orange)
+                                                    .font(.system(size: 14))
+                                                    .frame(width: 16)
+                                                Text("Email:")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.medium)
+                                                Text(email)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+                                        
+                                        // Date of Birth - only if has value
+                                        if let dob = member.dob, !dob.isEmpty {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "calendar")
+                                                    .foregroundColor(.orange)
+                                                    .font(.system(size: 14))
+                                                    .frame(width: 16)
+                                                Text("Born:")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.medium)
+                                                Text(formattedDOB(from: dob))
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+                                        
+                                        // If no contact info, show a message
+                                        if (member.phone?.isEmpty != false) && (member.email?.isEmpty != false) && (member.dob?.isEmpty != false) {
+                                            Text("No contact information provided")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .italic()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(20)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    }
+                }
+                .padding(.horizontal)
             }
         }
         .sheet(isPresented: $showingAddMemberSheet) {
-            // Ensure AddFamilyMemberSheetView is correctly defined and accessible
-            // And that AccountView.MonthYearPicker is accessible if AddFamilyMemberSheetView is outside AccountView
             AddFamilyMemberSheetView(
                 isPresented: $showingAddMemberSheet,
-                name: newMemberName, // Pass initial/reset values
+                name: newMemberName,
                 relationship: newMemberRelationship,
-                email: newMemberEmail ?? "", // Pass initial/reset values
-                phone: newMemberPhone ?? "", // Pass initial/reset values
-                dobMonth: newMemberDOBMonth, // Pass initial/reset values
-                dobYear: newMemberDOBYear,   // Pass initial/reset values
+                email: newMemberEmail ?? "",
+                phone: newMemberPhone ?? "",
+                dobMonth: newMemberDOBMonth,
+                dobYear: newMemberDOBYear,
                 relationshipOptions: relationshipOptions
             ) { memberDataToSave in
-                // This closure is called when "Add Member" is tapped in the sheet
                 self.handleAddNewMember(memberData: memberDataToSave)
             }
         }
-        
     }
-    
+
     // MARK: – Actions
     
     private func initiateAccountDeletion() {
@@ -1174,63 +1281,58 @@ struct AccountView: View {
     }
     
     private func confirmAndDeleteFamilyMember() {
-        guard let memberToDelete = self.familyMemberToDelete else {
-            print("⚠️ Attempted to delete but familyMemberToDelete was nil.")
-            return
-        }
-        
-        // Check for authToken, as form POSTs to web routes usually rely on an active session cookie
-        guard self.authToken != nil else { // authToken is your @AppStorage("laravelSessionToken")
-            self.updateErrorMessage = "Your session may have expired. Please log out and log back in."
-            self.showErrorAlert = true
-            self.familyMemberToDelete = nil // Clear selection
-            return
-        }
-        
-        isUpdating = true // Show a loading indicator (reuses your existing @State var)
-        
-        NetworkManager.shared.deleteFamilyMember(memberId: memberToDelete.id) { result in // Calling the function from NetworkManager
-            DispatchQueue.main.async {
-                isUpdating = false
-                switch result {
-                case .success:
-                    print("✅ Successfully processed delete request for member \(memberToDelete.name) (ID: \(memberToDelete.id)) by backend.")
-                    // Remove the member from the local 'family' array for immediate UI update
-                    family.removeAll { $0.id == memberToDelete.id }
-                    
-                    // Optionally, clear other related states
-                    editingDOB.removeValue(forKey: memberToDelete.id) // Clear any DOB editing state for this member
-                    self.familyMemberToDelete = nil // Clear the member marked for deletion
-                    self.isEditingFamily = false
-                    
-                    // You might want to inform the user locally, though the main feedback
-                    // for web-based operations is often the reloaded page state.
-                    // For a native app, a small success message can be good.
-                    // Example: self.updateErrorMessage = "\(memberToDelete.name) has been deleted."
-                    //          self.showSomeSuccessAlert = true // (You'd need a new @State for this)
-                    
-                case .failure(let error):
-                    var errorMessageToShow = "Could not delete \(memberToDelete.name)."
-                    if let networkErr = error as? NetworkError {
-                          switch networkErr {
-                          case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
-                          case .invalidResponse: errorMessageToShow += " Invalid server response."
-                          case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
-                          }
-                    } else {
-                        errorMessageToShow += " Specific error: \(error.localizedDescription)"
+            guard let memberToDelete = self.familyMemberToDelete else {
+                print("⚠️ Attempted to delete but familyMemberToDelete was nil.")
+                return
+            }
+            
+            // Check for JWT token instead of Laravel session token
+            guard DatabaseManager.shared.jwtApiToken != nil else {
+                self.updateErrorMessage = "Your session may have expired. Please log out and log back in."
+                self.showErrorAlert = true
+                self.familyMemberToDelete = nil // Clear selection
+                return
+            }
+            
+            isUpdating = true // Show a loading indicator (reuses your existing @State var)
+            
+            NetworkManager.shared.deleteFamilyMember(memberId: memberToDelete.id) { result in
+                DispatchQueue.main.async {
+                    isUpdating = false
+                    switch result {
+                    case .success:
+                        print("✅ Successfully processed delete request for member \(memberToDelete.name) (ID: \(memberToDelete.id)) by backend.")
+                        // Remove the member from the local 'family' array for immediate UI update
+                        family.removeAll { $0.id == memberToDelete.id }
+                        
+                        // Optionally, clear other related states
+                        editingDOB.removeValue(forKey: memberToDelete.id) // Clear any DOB editing state for this member
+                        self.familyMemberToDelete = nil // Clear the member marked for deletion
+                        self.isEditingFamily = false
+                        
+                    case .failure(let error):
+                        var errorMessageToShow = "Could not delete \(memberToDelete.name)."
+                        if let networkErr = error as? NetworkError {
+                              switch networkErr {
+                              case .serverError(let msg): errorMessageToShow += " Server error: \(msg)"
+                              case .invalidResponse: errorMessageToShow += " Invalid server response."
+                              case .decodingError(let decErr): errorMessageToShow += " Data error: \(decErr.localizedDescription)"
+                              }
+                        } else {
+                            errorMessageToShow += " Specific error: \(error.localizedDescription)"
+                        }
+                        self.updateErrorMessage = errorMessageToShow
+                        self.showErrorAlert = true
+                        self.familyMemberToDelete = nil
                     }
-                    self.updateErrorMessage = errorMessageToShow
-                    self.showErrorAlert = true
-                    self.familyMemberToDelete = nil
                 }
             }
         }
-    }
+    
     
     private func handleAddNewMember(memberData: (name: String, relationship: String, email: String?, phone: String?, dob: String) ) {
-        // authToken check is good practice
-        guard self.authToken != nil else {
+        // Check JWT token instead of Laravel session token
+        guard DatabaseManager.shared.jwtApiToken != nil else {
             self.updateErrorMessage = "Your session may have expired. Please log out and log back in."
             self.showErrorAlert = true
             return
@@ -1254,10 +1356,6 @@ struct AccountView: View {
                     // For the app, explicitly reload the family list to show the new member.
                     self.loadFamily()
                     
-                    // Optionally, provide a success message to the user through an alert or other UI.
-                    // self.updateErrorMessage = "\(memberData.name) has been successfully added to your family."
-                    // self.showSomeSuccessAlert = true // (You would need a new @State for this type of alert)
-
                 case .failure(let error):
                     var errorMessageToShow = "Could not add \(memberData.name)."
                     if let networkErr = error as? NetworkError {

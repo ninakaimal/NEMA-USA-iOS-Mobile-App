@@ -131,7 +131,7 @@ class EventRepository: ObservableObject {
                 print("ℹ️ [EventRepository] No event changes to save after sync.")
             }
             await loadEventsFromCoreData() // fetchLimit: 10) // Keep this limit if needed to update the UI with a limited set
-            
+                        
             // Schedule notifications for newly synced events
             await scheduleNotificationsForEvents()
             

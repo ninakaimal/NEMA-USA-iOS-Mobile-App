@@ -101,6 +101,11 @@ private enum DateFormatters {
 
 final class NetworkManager: NSObject {
     static let shared = NetworkManager()
+    
+    private var activeTicketRequests: [Int: Task<TicketPurchaseDetailResponse, Error>] = [:]
+    private var activeProgramRequests: [Int: Task<Participant, Error>] = [:]
+    private let requestQueue = DispatchQueue(label: "NetworkManager.requestQueue", attributes: .concurrent)
+
     private override init() {}
     
     /// For your JSON‐based register/login paths
@@ -1331,99 +1336,173 @@ final class NetworkManager: NSObject {
     }
 
     func fetchTicketRecordDetail(id: Int) async throws -> TicketPurchaseDetailResponse {
-        guard let jwt = DatabaseManager.shared.jwtApiToken else {
-            print("❌ [NetworkManager] fetchTicketRecordDetail: JWT token is missing")
-            throw NetworkError.serverError("User not authenticated. Please log in again.")
-        }
-        
-        let url = baseURL.appendingPathComponent("v1/mobile/my-events/ticket/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        // Check if we already have an active request for this ID
+        return try await withCheckedThrowingContinuation { continuation in
+            requestQueue.async(flags: .barrier) {
+                // If there's already an active request, wait for it
+                if let existingTask = self.activeTicketRequests[id] {
+                    Task {
+                        do {
+                            let result = try await existingTask.value
+                            continuation.resume(returning: result)
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                    return
+                }
+                
+                // Create new request
+                let task = Task {
+                    defer {
+                        self.requestQueue.async(flags: .barrier) {
+                            self.activeTicketRequests.removeValue(forKey: id)
+                        }
+                    }
+                    
+                    guard let jwt = DatabaseManager.shared.jwtApiToken else {
+                        print("❌ [NetworkManager] fetchTicketRecordDetail: JWT token is missing")
+                        throw NetworkError.serverError("User not authenticated. Please log in again.")
+                    }
+                    
+                    let url = self.baseURL.appendingPathComponent("v1/mobile/my-events/ticket/\(id)")
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.addValue("application/json", forHTTPHeaderField: "Accept")
+                    request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        print("🚀 [NetworkManager] Fetching ticket detail for ID: \(id)")
+                    print("🚀 [NetworkManager] Fetching ticket detail for ID: \(id)")
 
-        do {
-            let (data, response) = try await session.data(for: request)
+                    do {
+                        let (data, response) = try await self.session.data(for: request)
 
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw NetworkError.invalidResponse
-            }
-            
-            print("📡 [NetworkManager] fetchTicketRecordDetail: HTTP Status \(httpResponse.statusCode)")
-            
-            if httpResponse.statusCode == 401 {
-                DatabaseManager.shared.clearSession()
-                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
-                throw NetworkError.serverError("Authentication expired. Please log in again.")
-            }
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            throw NetworkError.invalidResponse
+                        }
+                        
+                        print("📡 [NetworkManager] fetchTicketRecordDetail: HTTP Status \(httpResponse.statusCode)")
+                        
+                        if httpResponse.statusCode == 401 {
+                            DatabaseManager.shared.clearSession()
+                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            throw NetworkError.serverError("Authentication expired. Please log in again.")
+                        }
 
-            guard (200...299).contains(httpResponse.statusCode) else {
-                _ = String(data: data, encoding: .utf8) ?? "No error body"
-                throw NetworkError.serverError("Failed to fetch ticket details. Status: \(httpResponse.statusCode)")
-            }
+                        guard (200...299).contains(httpResponse.statusCode) else {
+                            throw NetworkError.serverError("Failed to fetch ticket details. Status: \(httpResponse.statusCode)")
+                        }
 
-            do {
-                return try self.iso8601JSONDecoder.decode(TicketPurchaseDetailResponse.self, from: data)
-            } catch {
-                print("❌ [NetworkManager] fetchTicketRecordDetail: Decoding failed: \(error)")
-                throw NetworkError.decodingError(error)
-            }
-        } catch {
-            if error is NetworkError {
-                throw error
-            } else {
-                throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+                        do {
+                            return try self.iso8601JSONDecoder.decode(TicketPurchaseDetailResponse.self, from: data)
+                        } catch {
+                            print("❌ [NetworkManager] fetchTicketRecordDetail: Decoding failed: \(error)")
+                            throw NetworkError.decodingError(error)
+                        }
+                    } catch {
+                        if error is NetworkError {
+                            throw error
+                        } else {
+                            throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                
+                self.activeTicketRequests[id] = task
+                
+                Task {
+                    do {
+                        let result = try await task.value
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
         }
     }
-
+    
     func fetchProgramRecordDetail(id: Int) async throws -> Participant {
-        guard let jwt = DatabaseManager.shared.jwtApiToken else {
-            print("❌ [NetworkManager] fetchProgramRecordDetail: JWT token is missing")
-            throw NetworkError.serverError("User not authenticated. Please log in again.")
-        }
-        
-        let url = baseURL.appendingPathComponent("v1/mobile/my-events/program/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        // Check if we already have an active request for this ID
+        return try await withCheckedThrowingContinuation { continuation in
+            requestQueue.async(flags: .barrier) {
+                // If there's already an active request, wait for it
+                if let existingTask = self.activeProgramRequests[id] {
+                    Task {
+                        do {
+                            let result = try await existingTask.value
+                            continuation.resume(returning: result)
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                    return
+                }
+                
+                // Create new request
+                let task = Task {
+                    defer {
+                        self.requestQueue.async(flags: .barrier) {
+                            self.activeProgramRequests.removeValue(forKey: id)
+                        }
+                    }
+                    
+                    guard let jwt = DatabaseManager.shared.jwtApiToken else {
+                        print("❌ [NetworkManager] fetchProgramRecordDetail: JWT token is missing")
+                        throw NetworkError.serverError("User not authenticated. Please log in again.")
+                    }
+                    
+                    let url = self.baseURL.appendingPathComponent("v1/mobile/my-events/program/\(id)")
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.addValue("application/json", forHTTPHeaderField: "Accept")
+                    request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
 
-        print("🚀 [NetworkManager] Fetching program detail for ID: \(id)")
+                    print("🚀 [NetworkManager] Fetching program detail for ID: \(id)")
 
-        do {
-            let (data, response) = try await session.data(for: request)
+                    do {
+                        let (data, response) = try await self.session.data(for: request)
 
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw NetworkError.invalidResponse
-            }
-            
-            print("📡 [NetworkManager] fetchProgramRecordDetail: HTTP Status \(httpResponse.statusCode)")
-            
-            if httpResponse.statusCode == 401 {
-                DatabaseManager.shared.clearSession()
-                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
-                throw NetworkError.serverError("Authentication expired. Please log in again.")
-            }
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            throw NetworkError.invalidResponse
+                        }
+                        
+                        print("📡 [NetworkManager] fetchProgramRecordDetail: HTTP Status \(httpResponse.statusCode)")
+                        
+                        if httpResponse.statusCode == 401 {
+                            DatabaseManager.shared.clearSession()
+                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            throw NetworkError.serverError("Authentication expired. Please log in again.")
+                        }
 
-            guard (200...299).contains(httpResponse.statusCode) else {
-                _ = String(data: data, encoding: .utf8) ?? "No error body"
-                throw NetworkError.serverError("Failed to fetch program details. Status: \(httpResponse.statusCode)")
-            }
+                        guard (200...299).contains(httpResponse.statusCode) else {
+                            throw NetworkError.serverError("Failed to fetch program details. Status: \(httpResponse.statusCode)")
+                        }
 
-            do {
-                return try self.iso8601JSONDecoder.decode(Participant.self, from: data)
-            } catch {
-                print("❌ [NetworkManager] fetchProgramRecordDetail: Decoding failed: \(error)")
-                throw NetworkError.decodingError(error)
-            }
-        } catch {
-            if error is NetworkError {
-                throw error
-            } else {
-                throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+                        do {
+                            return try self.iso8601JSONDecoder.decode(Participant.self, from: data)
+                        } catch {
+                            print("❌ [NetworkManager] fetchProgramRecordDetail: Decoding failed: \(error)")
+                            throw NetworkError.decodingError(error)
+                        }
+                    } catch {
+                        if error is NetworkError {
+                            throw error
+                        } else {
+                            throw NetworkError.serverError("Network error: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                
+                self.activeProgramRequests[id] = task
+                
+                Task {
+                    do {
+                        let result = try await task.value
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
         }
     }

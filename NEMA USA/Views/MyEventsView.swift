@@ -10,12 +10,12 @@ import SwiftUI
 struct MyEventsView: View {
     @StateObject private var viewModel = MyEventsViewModel()
     @State private var selectedRecord: PurchaseRecord?
+    @State private var hasAppeared = false
     
     var body: some View {
-        // REMOVED NavigationView - this was causing the conflict
         VStack {
             if viewModel.isLoading && viewModel.purchaseRecords.isEmpty {
-                // Loading state for initial load
+                // Loading state for initial load only when no cached data
                 VStack(spacing: 20) {
                     ProgressView()
                         .scaleEffect(1.2)
@@ -24,8 +24,8 @@ struct MyEventsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-            } else if let errorMessage = viewModel.errorMessage {
-                // Error state
+            } else if let errorMessage = viewModel.errorMessage, viewModel.purchaseRecords.isEmpty {
+                // Error state - only show if we have no cached data
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 50))
@@ -54,8 +54,8 @@ struct MyEventsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-            } else if viewModel.purchaseRecords.isEmpty {
-                // Empty state
+            } else if viewModel.purchaseRecords.isEmpty && !viewModel.isLoading {
+                // Empty state - only show if not loading and truly empty
                 VStack(spacing: 16) {
                     Image(systemName: "calendar.badge.exclamationmark")
                         .font(.system(size: 50))
@@ -82,12 +82,14 @@ struct MyEventsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
             } else {
-                // Main content
+                // Main content - show cached data even while loading fresh data
                 ScrollView {
                     LazyVStack(spacing: 16) {
                         ForEach(viewModel.purchaseRecords) { record in
                             MyEventCard(record: record)
                                 .onTapGesture {
+                                    // Prevent rapid taps
+                                    guard selectedRecord == nil else { return }
                                     selectedRecord = record
                                 }
                         }
@@ -98,12 +100,35 @@ struct MyEventsView: View {
                 .refreshable {
                     await viewModel.refreshMyEvents()
                 }
+                .overlay(
+                    // Show a subtle loading indicator when refreshing
+                    Group {
+                        if viewModel.isLoading && !viewModel.purchaseRecords.isEmpty {
+                            VStack {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .padding(.trailing)
+                                        .padding(.top, 8)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                )
             }
         }
-        .navigationTitle("My Events")  // MOVED to here
-        .navigationBarTitleDisplayMode(.large)  // MOVED to here
-        .task {
-            await viewModel.loadMyEvents()
+        .navigationTitle("My Events")
+        .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            // Only load on first appearance to avoid duplicate requests
+            if !hasAppeared {
+                hasAppeared = true
+                Task {
+                    await viewModel.loadMyEvents()
+                }
+            }
         }
         .sheet(item: $selectedRecord) { record in
             PurchaseDetailView(record: record)

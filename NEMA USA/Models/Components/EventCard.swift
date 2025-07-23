@@ -8,40 +8,70 @@ import Kingfisher
 
 struct EventCard: View {
     let event: Event
+    let userStatuses: EventUserStatuses
+    
+    // Convenience initializer for backward compatibility
+    init(event: Event) {
+        self.event = event
+        // PERFORMANCE: Default to no status to avoid expensive lookups
+        self.userStatuses = EventUserStatuses(hasPurchasedTickets: false, hasRegisteredPrograms: false)
+    }
+    
+    // Main initializer with status information
+    init(event: Event, userStatuses: EventUserStatuses) {
+        self.event = event
+        self.userStatuses = userStatuses
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // MARK: - Image (Dynamic Loading with Kingfisher)
-            let placeholderImageName = "DefaultEventImage" // Make sure this asset exists
+            // MARK: - Image with Status Tags Overlay
+            ZStack(alignment: .topTrailing) {
+                // Image
+                let placeholderImageName = "DefaultEventImage"
 
-            if let imageUrlString = event.imageUrl, let imageURL = URL(string: imageUrlString) {
-                let processor = DownsamplingImageProcessor(size: CGSize(width: 1200, height: 1200))
-                KFImage(imageURL)
-                    .setProcessor(processor)
-                    .placeholder {
-                        Image(placeholderImageName)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 180)
-                            .background(Color.gray.opacity(0.1))
-                            .clipped()
-                            .cornerRadius(10)
+                if let imageUrlString = event.imageUrl, let imageURL = URL(string: imageUrlString) {
+                    let processor = DownsamplingImageProcessor(size: CGSize(width: 1200, height: 1200))
+                    KFImage(imageURL)
+                        .setProcessor(processor)
+                        .placeholder {
+                            Image(placeholderImageName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(height: 180)
+                                .background(Color.gray.opacity(0.1))
+                                .clipped()
+                                .cornerRadius(10)
+                        }
+                        .fade(duration: 0.25)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 180)
+                        .clipped()
+                        .cornerRadius(10)
+                } else {
+                    // Fallback if imageUrl is nil or not a valid URL
+                    Image(placeholderImageName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 180)
+                        .background(Color.gray.opacity(0.1))
+                        .clipped()
+                        .cornerRadius(10)
+                }
+                
+                // PERFORMANCE: Only show status tags if there are any
+                if userStatuses.hasPurchasedTickets || userStatuses.hasRegisteredPrograms {
+                    HStack(spacing: 6) {
+                        if userStatuses.hasPurchasedTickets {
+                            StatusTag(text: "Purchased", color: .green)
+                        }
+                        if userStatuses.hasRegisteredPrograms {
+                            StatusTag(text: "Registered", color: .blue)
+                        }
                     }
-                    .fade(duration: 0.25)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 180)
-                    .clipped()
-                    .cornerRadius(10)
-            } else {
-                // Fallback if imageUrl is nil or not a valid URL
-                Image(placeholderImageName)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 180)
-                    .background(Color.gray.opacity(0.1))
-                    .clipped()
-                    .cornerRadius(10)
+                    .padding(8)
+                }
             }
 
             // Title
@@ -62,9 +92,7 @@ struct EventCard: View {
                     .foregroundColor(.secondary)
             }
 
-            // --- Updated Location ---
-            // The Button has been replaced with a non-interactive HStack
-            // to prevent the map picker from appearing on this view.
+            // Location
             HStack(spacing: 4) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundColor(.secondary)
@@ -74,19 +102,37 @@ struct EventCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-
-            // Description - Removed description from the Event card
-//            Text(event.description?.stripHTML() ?? "")
-//                .font(.body)
-//                .foregroundColor(.secondary)
-//                .lineLimit(2)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
     }
-} // end of file
+}
+
+// MARK: - Supporting Views and Models
+
+struct EventUserStatuses: Equatable {
+    let hasPurchasedTickets: Bool
+    let hasRegisteredPrograms: Bool
+}
+
+struct StatusTag: View {
+    let text: String
+    let color: Color
+    
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .fontWeight(.bold)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color)
+            .cornerRadius(12)
+            .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+    }
+}
 
 extension String {
     // Strips HTML tags to provide a clean plain text summary

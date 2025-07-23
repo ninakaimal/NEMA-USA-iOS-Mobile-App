@@ -28,14 +28,6 @@ struct ContentView: View {
                         Image(systemName: "calendar")
                         Text("Calendar")
                     }
-// future feature
-//                MyEventsView()
-//                    .tag(2)
-//                    .tabItem {
-//                        Image(systemName: "calendar.badge.checkmark")
-//                        Text("My Events")
-//                    }
-                
                 AccountView()
                     .tag(2)
                     .tabItem {
@@ -43,12 +35,19 @@ struct ContentView: View {
                         Text("Account")
                     }
 
-                ContactView()
+                MyEventsView()
                     .tag(3)
                     .tabItem {
-                        Image(systemName: "message")
-                        Text("Feedback")
+                        Image(systemName: "calendar.badge.checkmark")
+                        Text("My Events")
                     }
+                   
+//                ContactView()
+//                    .tag(3)
+//                    .tabItem {
+//                        Image(systemName: "message")
+//                        Text("Feedback")
+//                    }
             }
             .accentColor(.orange)
 

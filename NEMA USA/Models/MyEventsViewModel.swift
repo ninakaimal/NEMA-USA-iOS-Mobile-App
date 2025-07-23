@@ -17,6 +17,7 @@ class MyEventsViewModel: ObservableObject {
     
     private let networkManager = NetworkManager.shared
     private let viewContext: NSManagedObjectContext
+    private var loadTask: Task<Void, Never>? // Track the current load task
     
     private var isAuthenticated: Bool {
         return DatabaseManager.shared.jwtApiToken != nil
@@ -27,23 +28,36 @@ class MyEventsViewModel: ObservableObject {
     }
     
     func loadMyEvents() async {
-        guard isAuthenticated else {
-            self.shouldShowLogin = true
-            return
+        // Cancel any existing load task to prevent conflicts
+        loadTask?.cancel()
+        
+        loadTask = Task { @MainActor in
+            guard isAuthenticated else {
+                self.shouldShowLogin = true
+                return
+            }
+            
+            // Don't start a new load if one is already in progress
+            guard !isLoading else {
+                print("[MyEventsViewModel] Load already in progress, skipping")
+                return
+            }
+            
+            isLoading = true
+            errorMessage = nil
+            
+            // First load from Core Data
+            await loadRecordsFromCoreData()
+            
+            // Only sync from network if we have existing data or if this is the first load
+            if !Task.isCancelled {
+                await syncFromNetwork()
+            }
+            
+            isLoading = false
         }
         
-        guard !isLoading else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        // First load from Core Data
-        await loadRecordsFromCoreData()
-        
-        // Then sync from network
-        await syncFromNetwork()
-        
-        isLoading = false
+        await loadTask?.value
     }
     
     func refreshMyEvents() async {
@@ -51,42 +65,77 @@ class MyEventsViewModel: ObservableObject {
             self.shouldShowLogin = true
             return
         }
+        
+        // Cancel any existing task
+        loadTask?.cancel()
+        
+        // For refresh, always sync from network without showing loading state
         await syncFromNetwork()
     }
     
     private func syncFromNetwork() async {
-        // Double-check authentication
-        guard isAuthenticated else {
-            self.shouldShowLogin = true
+        // Double-check authentication and cancellation
+        guard isAuthenticated && !Task.isCancelled else {
+            if !isAuthenticated {
+                self.shouldShowLogin = true
+            }
             return
         }
+        
         do {
             print("[MyEventsViewModel] Syncing purchase records from network...")
             let fetchedRecords = try await networkManager.fetchPurchaseRecords()
+            
+            // Check if task was cancelled during the network request
+            guard !Task.isCancelled else {
+                print("[MyEventsViewModel] Task was cancelled during network request")
+                return
+            }
+            
             print("[MyEventsViewModel] Fetched \(fetchedRecords.count) records from API")
             
             // Update Core Data with new records
             await saveToCoreData(fetchedRecords)
             
-            // Update UI with latest data
-            self.purchaseRecords = fetchedRecords.sorted { record1, record2 in
-                // Sort by event date (most recent first), then by purchase date
-                if let date1 = record1.eventDate, let date2 = record2.eventDate {
-                    return date1 > date2
-                } else if record1.eventDate != nil {
-                    return true
-                } else if record2.eventDate != nil {
-                    return false
-                } else {
-                    return record1.purchaseDate > record2.purchaseDate
+            // Update UI with latest data (only if not cancelled)
+            if !Task.isCancelled {
+                self.purchaseRecords = fetchedRecords.sorted { record1, record2 in
+                    // Sort by event date (most recent first), then by purchase date
+                    if let date1 = record1.eventDate, let date2 = record2.eventDate {
+                        return date1 > date2
+                    } else if record1.eventDate != nil {
+                        return true
+                    } else if record2.eventDate != nil {
+                        return false
+                    } else {
+                        return record1.purchaseDate > record2.purchaseDate
+                    }
                 }
+                
+                // Clear any previous error on successful load
+                self.errorMessage = nil
+                
+                // Notify EventStatusService about the update
+                NotificationCenter.default.post(name: NSNotification.Name("PurchaseRecordsUpdated"), object: nil)
             }
             
         } catch let networkError as NetworkError {
+            // Only show error if task wasn't cancelled
+            guard !Task.isCancelled else {
+                print("[MyEventsViewModel] Network request was cancelled, not showing error")
+                return
+            }
+            
             print("[MyEventsViewModel] Network error: \(networkError)")
             switch networkError {
             case .serverError(let message):
-                if message.contains("401") || message.contains("authenticate") {
+                if message.contains("401") || message.contains("authenticate") || message.contains("cancelled") {
+                    // Don't show error for cancelled requests
+                    if message.contains("cancelled") {
+                        print("[MyEventsViewModel] Request was cancelled, using cached data")
+                        return
+                    }
+                    
                     errorMessage = "Please log in again to view your events."
                     // Trigger logout flow
                     NotificationCenter.default.post(name: .didSessionExpire, object: nil)
@@ -97,7 +146,14 @@ class MyEventsViewModel: ObservableObject {
                 errorMessage = "Could not load your events. Please try again."
             }
         } catch {
+            guard !Task.isCancelled else { return }
+            
             print("[MyEventsViewModel] Unexpected error: \(error)")
+            // Check if it's a cancellation error
+            if (error as NSError).code == -999 {
+                print("[MyEventsViewModel] Request was cancelled, using cached data")
+                return
+            }
             errorMessage = "Could not load your events. Please try again."
         }
     }
@@ -131,6 +187,9 @@ class MyEventsViewModel: ObservableObject {
     }
     
     private func saveToCoreData(_ records: [PurchaseRecord]) async {
+        // Check cancellation before saving
+        guard !Task.isCancelled else { return }
+        
         // Clear existing records to avoid duplicates
         let deleteRequest: NSFetchRequest<NSFetchRequestResult> = CDPurchaseRecord.fetchRequest()
         let deleteRequestResult = NSBatchDeleteRequest(fetchRequest: deleteRequest)
@@ -163,5 +222,10 @@ class MyEventsViewModel: ObservableObject {
     
     func clearError() {
         errorMessage = nil
+    }
+    
+    // Clean up when the view model is deinitialized
+    deinit {
+        loadTask?.cancel()
     }
 }
