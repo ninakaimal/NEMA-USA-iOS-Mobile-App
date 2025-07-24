@@ -28,18 +28,18 @@ struct ContentView: View {
                         Image(systemName: "calendar")
                         Text("Calendar")
                     }
-                AccountView()
-                    .tag(2)
-                    .tabItem {
-                        Image(systemName: "person.crop.circle")
-                        Text("Account")
-                    }
-
                 MyEventsView()
-                    .tag(3)
+                    .tag(2)
                     .tabItem {
                         Image(systemName: "calendar.badge.checkmark")
                         Text("My Events")
+                    }
+
+                AccountView()
+                    .tag(3)
+                    .tabItem {
+                        Image(systemName: "person.crop.circle")
+                        Text("Account")
                     }
                    
 //                ContactView()

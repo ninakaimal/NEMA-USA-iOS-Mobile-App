@@ -13,117 +13,122 @@ struct MyEventsView: View {
     @State private var hasAppeared = false
     
     var body: some View {
-        VStack {
-            if viewModel.isLoading && viewModel.purchaseRecords.isEmpty {
-                // Loading state for initial load only when no cached data
-                VStack(spacing: 20) {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                    Text("Loading your events...")
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-            } else if let errorMessage = viewModel.errorMessage, viewModel.purchaseRecords.isEmpty {
-                // Error state - only show if we have no cached data
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 50))
-                        .foregroundColor(.orange)
+        NavigationView {
+            ZStack(alignment: .top) {
+                Color.orange
+                    .ignoresSafeArea(edges: .top)
+                    .frame(height: 56)
+
+                // Check for authentication first - if no token, show login like AccountView
+                if DatabaseManager.shared.jwtApiToken == nil {
+                    LoginView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     
-                    Text("Unable to Load Events")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text(errorMessage)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                    
-                    Button("Try Again") {
-                        viewModel.clearError()
-                        Task {
-                            await viewModel.loadMyEvents()
-                        }
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.orange)
-                    .cornerRadius(10)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-            } else if viewModel.purchaseRecords.isEmpty && !viewModel.isLoading {
-                // Empty state - only show if not loading and truly empty
-                VStack(spacing: 16) {
-                    Image(systemName: "calendar.badge.exclamationmark")
-                        .font(.system(size: 50))
-                        .foregroundColor(.gray)
-                    
-                    Text("No Events Found")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("You haven't registered for any events or purchased any tickets yet.")
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                    
-                    Button("Browse Events") {
-                        // Navigate to events list - you may need to implement this
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.orange)
-                    .cornerRadius(10)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-            } else {
-                // Main content - show cached data even while loading fresh data
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(viewModel.purchaseRecords) { record in
-                            MyEventCard(record: record)
-                                .onTapGesture {
-                                    // Prevent rapid taps
-                                    guard selectedRecord == nil else { return }
-                                    selectedRecord = record
+                } else {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            Spacer().frame(height: 16)
+                            
+                            if viewModel.isLoading && viewModel.purchaseRecords.isEmpty {
+                                ProgressView("Loading your events...")
+                                    .padding()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                
+                            } else if let errorMessage = viewModel.errorMessage, viewModel.purchaseRecords.isEmpty {
+                                if errorMessage.lowercased().contains("authentication") || errorMessage.lowercased().contains("expired") {
+                                    LoginView()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else {
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "exclamationmark.triangle")
+                                            .font(.system(size: 50))
+                                            .foregroundColor(.orange)
+                                        
+                                        Text("Unable to Load Events")
+                                            .font(.title2)
+                                            .fontWeight(.semibold)
+                                        
+                                        Text(errorMessage)
+                                            .multilineTextAlignment(.center)
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal)
+                                        
+                                        Button("Try Again") {
+                                            viewModel.clearError()
+                                            Task {
+                                                await viewModel.loadMyEvents()
+                                            }
+                                        }
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .background(Color.orange)
+                                        .cornerRadius(10)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top)
-                }
-                .refreshable {
-                    await viewModel.refreshMyEvents()
-                }
-                .overlay(
-                    // Show a subtle loading indicator when refreshing
-                    Group {
-                        if viewModel.isLoading && !viewModel.purchaseRecords.isEmpty {
-                            VStack {
-                                HStack {
-                                    Spacer()
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .padding(.trailing)
-                                        .padding(.top, 8)
+                                
+                            } else if viewModel.purchaseRecords.isEmpty && !viewModel.isLoading {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "calendar.badge.exclamationmark")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.gray)
+                                    
+                                    Text("No Events Found")
+                                        .font(.title2)
+                                        .fontWeight(.semibold)
+                                    
+                                    Text("You haven't registered for any events or purchased any tickets yet.")
+                                        .multilineTextAlignment(.center)
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal)
+                                    
+                                    Button("Browse Events") {
+                                        // Navigate to events list
+                                    }
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.orange)
+                                    .cornerRadius(10)
                                 }
-                                Spacer()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                
+                            } else {
+                                LazyVStack(spacing: 16) {
+                                    ForEach(viewModel.purchaseRecords) { record in
+                                        MyEventCard(record: record)
+                                            .onTapGesture {
+                                                guard selectedRecord == nil else { return }
+                                                selectedRecord = record
+                                            }
+                                    }
+                                }
+                                .padding(.horizontal)
+                                
+                                if viewModel.isLoading && !viewModel.purchaseRecords.isEmpty {
+                                    ProgressView("Refreshing...")
+                                        .padding()
+                                }
                             }
                         }
+                        .padding(.bottom)
+                        .background(Color(.systemBackground))
                     }
-                )
+                    .refreshable {
+                        await viewModel.refreshMyEvents()
+                    }
+                }
             }
+            .navigationTitle("My Events")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .navigationTitle("My Events")
-        .navigationBarTitleDisplayMode(.large)
         .onAppear {
-            // Only load on first appearance to avoid duplicate requests
-            if !hasAppeared {
+            // Always check auth status when View appears
+            if DatabaseManager.shared.jwtApiToken == nil {
+                viewModel.clearData()
+                hasAppeared = false
+            } else if !hasAppeared {
                 hasAppeared = true
                 Task {
                     await viewModel.loadMyEvents()
@@ -133,8 +138,15 @@ struct MyEventsView: View {
         .sheet(item: $selectedRecord) { record in
             PurchaseDetailView(record: record)
         }
-        .fullScreenCover(isPresented: $viewModel.shouldShowLogin) {
-            LoginView()
+        .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
+            Task {
+                await viewModel.loadMyEvents()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .didSessionExpire)) { _ in
+            // When user logs out or session expires, clear the data and show login
+            viewModel.clearData()
+            hasAppeared = false
         }
     }
 }
@@ -172,6 +184,15 @@ struct MyEventCard: View {
         }
     }
     
+    private var displayStatus: String {
+        switch record.status.lowercased() {
+        case "success":
+            return "Registered"
+        default:
+            return record.status
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with type and status
@@ -187,7 +208,7 @@ struct MyEventCard: View {
                 
                 Spacer()
                 
-                Text(record.status)
+                Text(displayStatus)
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
@@ -197,20 +218,46 @@ struct MyEventCard: View {
                     .cornerRadius(8)
             }
             
-            // Event name
-            Text(record.eventName)
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-                .lineLimit(2)
+            // CONDITIONAL DISPLAY BASED ON TYPE
+            if record.type == "Program Registration" {
+                // NEW FORMAT FOR PROGRAMS
+                // 1. Program name as title
+                Text(record.title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                
+                // 2. Participant info as subtitle
+                if let subtitle = record.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                
+                // 3. Event name as third line
+                Text(record.eventName)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            } else {
+                // ORIGINAL FORMAT FOR TICKETS
+                // 1. Event name as title
+                Text(record.eventName)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                
+                // 2. Ticket count as subtitle
+                Text(record.title)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
             
-            // Title (ticket count or program name)
-            Text(record.title)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            
-            // Date and amount
+            // Date and amount (same for both types)
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -234,10 +281,13 @@ struct MyEventCard: View {
                 
                 Spacer()
                 
-                Text(record.displayAmount)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                // Show amount if it exists
+                if let amount = record.displayAmount {
+                    Text(amount)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                }
             }
         }
         .padding()

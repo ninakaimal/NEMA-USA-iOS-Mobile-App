@@ -66,12 +66,13 @@
     </entity>
     <entity name="CDPurchaseRecord" representedClassName="CDPurchaseRecord" syncable="YES" codeGenerationType="class">
         <attribute name="detailId" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
-        <attribute name="displayAmount" attributeType="String"/>
+        <attribute name="displayAmount" optional="YES" attributeType="String"/>
         <attribute name="eventDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="eventName" attributeType="String"/>
         <attribute name="purchaseDate" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="recordId" attributeType="String"/>
         <attribute name="status" attributeType="String"/>
+        <attribute name="subtitle" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>
         <attribute name="type" attributeType="String"/>
     </entity>

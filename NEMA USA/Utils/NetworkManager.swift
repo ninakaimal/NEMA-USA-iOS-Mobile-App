@@ -102,6 +102,25 @@ private enum DateFormatters {
 final class NetworkManager: NSObject {
     static let shared = NetworkManager()
     
+    // MOVED: Connection management properties (previously global)
+    private var activeConnections: Set<URLSessionDataTask> = []
+    private let connectionQueue = DispatchQueue(label: "network.connections", qos: .utility)
+
+    private lazy var programSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0
+        config.timeoutIntervalForResource = 15.0
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.urlCache = nil // Prevent connection reuse issues
+        return URLSession(configuration: config)
+    }()
+
+    private func cleanupConnection(_ task: URLSessionDataTask) {
+        connectionQueue.async {
+            self.activeConnections.remove(task)
+        }
+    }
+
     private var activeTicketRequests: [Int: Task<TicketPurchaseDetailResponse, Error>] = [:]
     private var activeProgramRequests: [Int: Task<Participant, Error>] = [:]
     private let requestQueue = DispatchQueue(label: "NetworkManager.requestQueue", attributes: .concurrent)
@@ -1193,14 +1212,25 @@ final class NetworkManager: NSObject {
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Accept")
 
-//        print("🚀 [NetworkManager] Fetching programs for event \(eventId) from: \(url.absoluteString)")
+        print("🚀 [NetworkManager] Fetching programs for event \(eventId) from: \(url.absoluteString)")
 
-        let (data, response) = try await session.data(for: request)
+        // Use the specialized session with timeouts
+        let (data, response) = try await programSession.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        if httpResponse.statusCode == 401 {
+            DatabaseManager.shared.clearSession()
+            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            throw NetworkError.serverError("Authentication expired.")
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
             let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-            print("❌ [NetworkManager] fetchPrograms: HTTP Error. Body: \(errorBody)")
-            throw NetworkError.serverError("Failed to fetch programs. Status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            print("❌ [NetworkManager] fetchPrograms: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to fetch programs. Status: \(httpResponse.statusCode)")
         }
 
         do {

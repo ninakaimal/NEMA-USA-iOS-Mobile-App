@@ -230,6 +230,81 @@ class EventRepository: ObservableObject {
         isLoading = false
     }
     
+    @MainActor
+    func syncProgramsAsync(for eventId: String) async -> [EventProgram] {
+        print("[EventRepository] Syncing programs for event ID: \(eventId)")
+        
+        // Move heavy operations off main thread
+        return await withTaskGroup(of: [EventProgram].self) { group in
+            group.addTask {
+                do {
+                    // Perform network request on background thread
+                    let fetchedPrograms = try await self.networkManager.fetchPrograms(forEventId: eventId)
+                    print("[EventRepository] Fetched \(fetchedPrograms.count) programs for event \(eventId).")
+                    
+                    // Switch back to main thread for Core Data operations
+                    return await MainActor.run {
+                        do {
+                            // Get the parent CDEvent object from Core Data
+                            let eventFetchRequest: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
+                            eventFetchRequest.predicate = NSPredicate(format: "id == %@", eventId as NSString)
+                            guard let parentEvent = try self.viewContext.fetch(eventFetchRequest).first else {
+                                print("⚠️ [EventRepository] Event with ID \(eventId) not found. Cannot sync programs.")
+                                return []
+                            }
+                            
+                            // Clear old programs to ensure data is fresh
+                            if let existingPrograms = parentEvent.programs as? Set<CDEventProgram> {
+                                for program in existingPrograms {
+                                    self.viewContext.delete(program)
+                                }
+                            }
+                            
+                            // Save the new programs and their categories to Core Data
+                            for programData in fetchedPrograms {
+                                let cdProgram = CDEventProgram(context: self.viewContext)
+                                cdProgram.id = programData.id
+                                cdProgram.name = programData.name
+                                cdProgram.time = programData.time
+                                cdProgram.rulesAndGuidelines = programData.rulesAndGuidelines
+                                cdProgram.registrationStatus = programData.registrationStatus
+                                
+                                var categorySet = Set<CDProgramCategory>()
+                                for categoryData in programData.categories {
+                                    let cdCategory = CDProgramCategory(context: self.viewContext)
+                                    cdCategory.id = Int64(categoryData.id)
+                                    cdCategory.name = categoryData.name
+                                    categorySet.insert(cdCategory)
+                                }
+                                cdProgram.categories = categorySet as NSSet
+                                cdProgram.event = parentEvent
+                            }
+                            
+                            if self.viewContext.hasChanges {
+                                try self.viewContext.save()
+                                print("✅ [EventRepository] Successfully synced programs for event ID: \(eventId)")
+                            }
+                            
+                            return fetchedPrograms
+                        } catch {
+                            print("❌ [EventRepository] Error syncing programs for event \(eventId): \(error.localizedDescription)")
+                            return []
+                        }
+                    }
+                } catch {
+                    print("❌ [EventRepository] Network error fetching programs for event \(eventId): \(error.localizedDescription)")
+                    return []
+                }
+            }
+            
+            // Wait for the task to complete
+            for await result in group {
+                return result
+            }
+            return []
+        }
+    }
+    
     // Method to sync panthis for a specific event
     @MainActor
     func syncPanthis(forEventID eventID: String, eventCDObject: CDEvent? = nil) async {

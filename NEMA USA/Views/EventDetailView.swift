@@ -28,14 +28,64 @@ extension View {
 class EventProgramsViewModel: ObservableObject {
     @Published var programs: [EventProgram] = []
     @Published var isLoading = false
+    @Published var error: String?
     
     private let repository = EventRepository()
+    private var loadingTask: Task<Void, Never>?
+    
+    deinit {
+        loadingTask?.cancel()
+    }
     
     func loadPrograms(for eventId: String) async {
+        // Cancel any existing task
+        loadingTask?.cancel()
+        
         guard !isLoading else { return }
         isLoading = true
-        self.programs = await repository.syncPrograms(forEventID: eventId)
-        isLoading = false
+        error = nil
+        
+        loadingTask = Task { @MainActor in
+            do {
+                // Use the new async method with timeout
+                self.programs = try await withTimeout(seconds: 10) {
+                    await self.repository.syncProgramsAsync(for: eventId)
+                }
+            } catch TimeoutError.timeout {
+                self.error = "Loading timed out. Please try again."
+                print("⚠️ Program loading timed out for event \(eventId)")
+            } catch {
+                self.error = "Failed to load programs."
+                print("⚠️ Error loading programs: \(error)")
+            }
+            self.isLoading = false
+        }
+        await loadingTask?.value
+    }
+}
+
+// Timeout utility
+enum TimeoutError: Error {
+    case timeout
+}
+
+func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    return try await withThrowingTaskGroup(of: T.self) { group in
+        // Add the main operation
+        group.addTask {
+            try await operation()
+        }
+        
+        // Add timeout task
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw TimeoutError.timeout
+        }
+        
+        // Return first completed result and cancel others
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
     }
 }
 

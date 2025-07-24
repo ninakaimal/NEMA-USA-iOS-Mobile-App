@@ -103,10 +103,17 @@ struct HeroHeaderSection: View {
                     Text("Total Amount")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text(record.displayAmount)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
+                    if let amount = record.displayAmount {
+                        Text(amount)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.primary)
+                    } else {
+                        Text("Free registration")
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.green)
+                    }
                 }
             }
             
@@ -174,6 +181,16 @@ struct QuickInfoCard: View {
 struct StatusBadge: View {
     let status: String
     
+    private var displayStatus: String {
+        switch status.lowercased() {
+        case "success":
+            return "Registered"
+        default:
+            return status.replacingOccurrences(of: "Success", with: "Registered")
+                        .replacingOccurrences(of: "success", with: "Registered")
+        }
+    }
+    
     private var statusConfig: (color: Color, icon: String) {
         switch status.lowercased() {
         case "paid", "success":
@@ -191,7 +208,7 @@ struct StatusBadge: View {
         HStack(spacing: 6) {
             Image(systemName: statusConfig.icon)
                 .font(.caption)
-            Text(status.uppercased())
+            Text(displayStatus.uppercased())
                 .font(.caption2)
                 .fontWeight(.bold)
         }
@@ -582,6 +599,7 @@ struct ErrorStateView: View {
         eventDate: Calendar.current.date(byAdding: .day, value: 30, to: Date()),
         eventName: "NEMA Onam 2025",
         title: "2 Tickets",
+        subtitle: nil,
         displayAmount: "$50.00",
         status: "Paid",
         detailId: 123

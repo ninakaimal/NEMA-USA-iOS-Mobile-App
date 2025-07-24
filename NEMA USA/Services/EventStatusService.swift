@@ -80,7 +80,8 @@ class EventStatusService: ObservableObject {
                     eventDate: cdRecord.eventDate,
                     eventName: eventName,
                     title: cdRecord.title ?? "",
-                    displayAmount: cdRecord.displayAmount ?? "",
+                    subtitle: cdRecord.subtitle,
+                    displayAmount: cdRecord.displayAmount,
                     status: cdRecord.status ?? "",
                     detailId: Int(cdRecord.detailId)
                 )

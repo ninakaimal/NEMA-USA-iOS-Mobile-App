@@ -46,6 +46,19 @@ class MyEventsViewModel: ObservableObject {
             isLoading = true
             errorMessage = nil
             
+            // CLEAR CODE CACHE - FORCE REFRESH if structure changed - REMOVE with FUTURE VERSION 
+            print("[MyEventsViewModel] Clearing old Core Data cache due to structure changes")
+            let deleteRequest: NSFetchRequest<NSFetchRequestResult> = CDPurchaseRecord.fetchRequest()
+            let deleteResult = NSBatchDeleteRequest(fetchRequest: deleteRequest)
+            
+            do {
+                try viewContext.execute(deleteResult)
+                try viewContext.save()
+                print("[MyEventsViewModel] Successfully cleared old Core Data cache")
+            } catch {
+                print("[MyEventsViewModel] Failed to clear cache: \(error)")
+            }
+            
             // First load from Core Data
             await loadRecordsFromCoreData()
             
@@ -175,7 +188,8 @@ class MyEventsViewModel: ObservableObject {
                     eventDate: cdRecord.eventDate,
                     eventName: cdRecord.eventName ?? "",
                     title: cdRecord.title ?? "",
-                    displayAmount: cdRecord.displayAmount ?? "",
+                    subtitle: cdRecord.subtitle,
+                    displayAmount: cdRecord.displayAmount,
                     status: cdRecord.status ?? "",
                     detailId: Int(cdRecord.detailId)
                 )
@@ -206,6 +220,7 @@ class MyEventsViewModel: ObservableObject {
                 cdRecord.eventDate = record.eventDate
                 cdRecord.eventName = record.eventName
                 cdRecord.title = record.title
+                cdRecord.subtitle = record.subtitle
                 cdRecord.displayAmount = record.displayAmount
                 cdRecord.status = record.status
                 cdRecord.detailId = Int64(record.detailId)
@@ -222,6 +237,11 @@ class MyEventsViewModel: ObservableObject {
     
     func clearError() {
         errorMessage = nil
+    }
+    func clearData() {
+        purchaseRecords = []
+        errorMessage = nil
+        isLoading = false
     }
     
     // Clean up when the view model is deinitialized

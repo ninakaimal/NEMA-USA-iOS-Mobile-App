@@ -72,6 +72,7 @@ class MyEventsRepository: ObservableObject {
         cdRecord.eventDate = record.eventDate
         cdRecord.eventName = record.eventName
         cdRecord.title = record.title
+        cdRecord.subtitle = record.subtitle
         cdRecord.displayAmount = record.displayAmount
         cdRecord.status = record.status
         cdRecord.detailId = Int64(record.detailId)
@@ -85,7 +86,8 @@ class MyEventsRepository: ObservableObject {
             eventDate: cdRecord.eventDate,
             eventName: cdRecord.eventName ?? "",
             title: cdRecord.title ?? "",
-            displayAmount: cdRecord.displayAmount ?? "",
+            subtitle: cdRecord.subtitle,
+            displayAmount: cdRecord.displayAmount,
             status: cdRecord.status ?? "",
             detailId: Int(cdRecord.detailId)
         )

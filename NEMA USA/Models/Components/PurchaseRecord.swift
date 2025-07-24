@@ -13,14 +13,15 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
     let eventDate: Date?
     let eventName: String
     let title: String
-    let displayAmount: String
+    let subtitle: String?
+    let displayAmount: String?
     let status: String
     let detailId: Int
     
     var id: String { recordId }
     
     enum CodingKeys: String, CodingKey {
-        case recordId, type, eventName, title, status
+        case recordId, type, eventName, title, subtitle, status
         case purchaseDate = "purchaseDate"
         case eventDate = "eventDate"
         case displayAmount = "displayAmount"
@@ -34,7 +35,8 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
         type = try container.decode(String.self, forKey: .type)
         eventName = try container.decode(String.self, forKey: .eventName)
         title = try container.decode(String.self, forKey: .title)
-        displayAmount = try container.decode(String.self, forKey: .displayAmount)
+        subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)     // NEW
+        displayAmount = try container.decodeIfPresent(String.self, forKey: .displayAmount)  // CHANGED to optional
         status = try container.decode(String.self, forKey: .status)
         detailId = try container.decode(Int.self, forKey: .detailId)
         
@@ -52,13 +54,14 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
     }
     
     // Manual initializer for Core Data mapping
-    init(recordId: String, type: String, purchaseDate: Date, eventDate: Date?, eventName: String, title: String, displayAmount: String, status: String, detailId: Int) {
+    init(recordId: String, type: String, purchaseDate: Date, eventDate: Date?, eventName: String, title: String, subtitle: String?, displayAmount: String?, status: String, detailId: Int) {
         self.recordId = recordId
         self.type = type
         self.purchaseDate = purchaseDate
         self.eventDate = eventDate
         self.eventName = eventName
         self.title = title
+        self.subtitle = subtitle
         self.displayAmount = displayAmount
         self.status = status
         self.detailId = detailId
