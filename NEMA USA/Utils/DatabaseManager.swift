@@ -51,6 +51,36 @@ final class DatabaseManager {
         }
     }
 
+    // MARK: - Biometric Settings (NEW - FaceID addition)
+    private let biometricPreferencesKey = "biometricPreferences"
+    
+    struct BiometricPreferences: Codable {
+        var isEnabled: Bool = false
+        var hasAskedUser: Bool = false
+        var lastPromptDate: Date?
+        
+        init() {
+            self.isEnabled = false
+            self.hasAskedUser = false
+            self.lastPromptDate = nil
+        }
+    }
+    
+    var biometricPreferences: BiometricPreferences {
+        get {
+            guard let data = defaults.data(forKey: biometricPreferencesKey),
+                  let prefs = try? JSONDecoder().decode(BiometricPreferences.self, from: data) else {
+                return BiometricPreferences()
+            }
+            return prefs
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: biometricPreferencesKey)
+            }
+        }
+    }
+
     // MARK: – Laravel scraping session token
 
     /// Store the Laravel session token (e.g. "LARAVEL_SESSION")
@@ -124,5 +154,58 @@ final class DatabaseManager {
         defaults.removeObject(forKey: "membershipExpiryDate")
         defaults.removeObject(forKey: "userId")
         print("[DatabaseManager] Cleared all session and user-specific AppStorage keys.")
+    }
+    
+    // MARK: - Biometric Helper Methods (NEW - FaceID addition)
+    
+    /// Enable biometric authentication and mark as asked
+    func enableBiometricAuth() {
+        var prefs = biometricPreferences
+        prefs.isEnabled = true
+        prefs.hasAskedUser = true
+        prefs.lastPromptDate = Date()
+        biometricPreferences = prefs
+        print("🔍 [DatabaseManager] Enabled biometric auth")
+    }
+    
+    /// Disable biometric authentication and allow asking again
+    func disableBiometricAuth() {
+        var prefs = biometricPreferences
+        prefs.isEnabled = false
+        prefs.hasAskedUser = false  // FIXED: Reset this so we can ask again after logout
+        prefs.lastPromptDate = Date()
+        biometricPreferences = prefs
+        
+        // Also remove saved credentials when disabled
+        let _ = KeychainManager.shared.deleteCredentials()
+        print("🔍 [DatabaseManager] Disabled biometric auth and reset hasAskedUser")
+    }
+    
+    /// Check if we should ask user about biometric authentication
+    func shouldAskForBiometricSetup() -> Bool {
+        let prefs = biometricPreferences
+        
+        print("🔍 [DatabaseManager] shouldAskForBiometricSetup check:")
+        print("🔍 [DatabaseManager] - isEnabled: \(prefs.isEnabled)")
+        print("🔍 [DatabaseManager] - hasAskedUser: \(prefs.hasAskedUser)")
+        print("🔍 [DatabaseManager] - isBiometricAvailable: \(BiometricAuthManager.shared.isBiometricAvailable())")
+        print("🔍 [DatabaseManager] - isBiometricEnrolled: \(BiometricAuthManager.shared.isBiometricEnrolled())")
+        
+        // Don't ask if biometric auth is not available on device
+        if !BiometricAuthManager.shared.isBiometricAvailable() || !BiometricAuthManager.shared.isBiometricEnrolled() {
+            print("🔍 [DatabaseManager] - Result: false (biometric not available)")
+            return false
+        }
+        
+        // Don't ask if already enabled
+        if prefs.isEnabled {
+            print("🔍 [DatabaseManager] - Result: false (already enabled)")
+            return false
+        }
+        
+        // Ask if we haven't asked before OR if biometric was disabled (e.g., after logout)
+        let shouldAsk = !prefs.hasAskedUser
+        print("🔍 [DatabaseManager] - Result: \(shouldAsk)")
+        return shouldAsk
     }
 }

@@ -1223,7 +1223,9 @@ final class NetworkManager: NSObject {
         
         if httpResponse.statusCode == 401 {
             DatabaseManager.shared.clearSession()
-            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            }
             throw NetworkError.serverError("Authentication expired.")
         }
         
@@ -1334,7 +1336,9 @@ final class NetworkManager: NSObject {
             if httpResponse.statusCode == 401 {
                 print("🔒 [NetworkManager] fetchPurchaseRecords: Unauthorized - clearing session")
                 DatabaseManager.shared.clearSession()
-                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                }
                 throw NetworkError.serverError("Authentication expired. Please log in again.")
             }
             
@@ -1414,7 +1418,9 @@ final class NetworkManager: NSObject {
                         
                         if httpResponse.statusCode == 401 {
                             DatabaseManager.shared.clearSession()
-                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            }
                             throw NetworkError.serverError("Authentication expired. Please log in again.")
                         }
 
@@ -1500,7 +1506,9 @@ final class NetworkManager: NSObject {
                         
                         if httpResponse.statusCode == 401 {
                             DatabaseManager.shared.clearSession()
-                            NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                            }
                             throw NetworkError.serverError("Authentication expired. Please log in again.")
                         }
 

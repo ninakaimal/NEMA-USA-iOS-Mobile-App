@@ -18,6 +18,7 @@
     <key>UIBackgroundModes</key>
     <array>
         <string>remote-notification</string>
+        <string>fetch</string>
     </array>
 
     <!-- Launch storyboard -->
@@ -30,6 +31,10 @@
 
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>We need your location to provide directions to event venues in your preferred maps app.</string>
+
+    <!-- FaceID/TouchID usage description -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Use Face ID to quickly and securely log into your NEMA account without entering your password.</string>
 
     <!-- Disable for Prod - App Transport Security: allow HTTP to your API hosts -->
     <!-- <key>NSAppTransportSecurity</key>

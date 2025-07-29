@@ -879,6 +879,12 @@ struct AccountView: View {
     }
     
     private func performLogout() {
+        print("🔍 [AccountView] Performing logout, posting didUserLogout notification")
+        
+        // Post logout notification BEFORE clearing session
+        NotificationCenter.default.post(name: .didUserLogout, object: nil)
+        
+        // Only clear session data (keep Face ID enabled)
         DatabaseManager.shared.clearSession()
         authToken = nil; profile = nil; family = []; cachedExpiryRaw = nil; userId = 0
     }

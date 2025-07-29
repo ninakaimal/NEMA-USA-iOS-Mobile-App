@@ -25,6 +25,23 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
         return true
     }
     
+    // ADD: Background app refresh for version checking
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        print("📱 [ServiceDelegate] App became active - checking for updates")
+        Task {
+            await AppVersionManager.shared.checkForUpdates()
+        }
+    }
+    
+    // ADD: Handle background app refresh
+    func application(_ application: UIApplication, performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        print("📱 [ServiceDelegate] Background fetch - checking for updates")
+        Task {
+            await AppVersionManager.shared.checkForUpdates()
+            completionHandler(.newData)
+        }
+    }
+    
     private func configureLocalNotifications() {
         UNUserNotificationCenter.current().delegate = self
         print("📱 [ServiceDelegate] Local notification center delegate set")

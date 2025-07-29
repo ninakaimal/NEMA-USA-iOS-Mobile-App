@@ -3,6 +3,7 @@
 //  NEMA USA
 //  Created by Sajith on 4/1/25.
 //  Updated by Sajith for local notifications on 7/21/25.
+//  Updated by Sajith to add force upgrade on 7/28/25.
 
 
 import Kingfisher
@@ -15,7 +16,14 @@ struct NEMA_USAApp: App {
 
     @AppStorage("laravelSessionToken") private var authToken: String?
     @State private var passwordResetToken: PasswordResetToken?
+    @State private var showBiometricSetupPrompt = false
     @State private var eventToDeepLink: String? = nil
+
+    
+    // Version checking state
+    @StateObject private var versionManager = AppVersionManager.shared
+    @State private var showUpdatePrompt = false
+    @State private var showUpdateError = false
 
     init() {
         configureNavigationBarAppearance()
@@ -57,6 +65,8 @@ struct NEMA_USAApp: App {
                     // Request notification permissions on app start
                     Task {
                         await requestNotificationPermissions()
+                        // Check for app updates after app setup
+                        await checkForUpdatesOnLaunch()
                     }
                 }
                 .onOpenURL { url in
@@ -89,7 +99,63 @@ struct NEMA_USAApp: App {
                     // Navigate to EventDetailView when deep link is triggered
                     EventDeepLinkView(eventId: deepLink.eventId)
                 }
+                // Version checking UI
+                .onChange(of: versionManager.updateType) { updateType in
+                    switch updateType {
+                    case .none:
+                        showUpdatePrompt = false
+                    case .optional, .mandatory:
+                        showUpdatePrompt = true
+                    }
+                }
+                .onChange(of: versionManager.lastError != nil) { hasError in
+                    showUpdateError = hasError
+                }
+                .sheet(isPresented: $showUpdatePrompt) {
+                    UpdatePromptView(updateType: versionManager.updateType)
+                }
+                .sheet(isPresented: $showUpdateError) {
+                    if let error = versionManager.lastError {
+                        UpdateErrorView(
+                            error: error,
+                            onRetry: {
+                                showUpdateError = false
+                                Task {
+                                    await versionManager.checkForUpdates(forced: true)
+                                }
+                            },
+                            onDismiss: {
+                                showUpdateError = false
+                            }
+                        )
+                    }
+                }
+            // FaceID setup alert
+            .alert("Enable Face ID Login?", isPresented: $showBiometricSetupPrompt) {
+                Button("Enable") {
+                    enableBiometricFromApp()
+                }
+                Button("Not Now", role: .cancel) {
+                    DatabaseManager.shared.disableBiometricAuth()
+                }
+            } message: {
+                Text("Use Face ID to quickly and securely log into your NEMA account.")
+            }
+
+            // Listen for successful JWT login
+            .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
+                // Check for biometric setup after successful login
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    checkForBiometricSetup()
+                }
+            }
         }
+    }
+            
+    // Version checking method
+    private func checkForUpdatesOnLaunch() async {
+        print("📱 [App] Checking for app updates...")
+        await versionManager.checkForUpdates()
     }
     
     private func requestNotificationPermissions() async {
@@ -117,6 +183,62 @@ struct NEMA_USAApp: App {
         }
 
         passwordResetToken = PasswordResetToken(id: token)
+    }
+    
+    private func checkForBiometricSetup() {
+        let canUseBiometric = BiometricAuthManager.shared.isBiometricAvailable() &&
+                             BiometricAuthManager.shared.isBiometricEnrolled()
+        
+        print("🔍 [App] checkForBiometricSetup - canUseBiometric: \(canUseBiometric), shouldAsk: \(DatabaseManager.shared.shouldAskForBiometricSetup())")
+        
+        if canUseBiometric && DatabaseManager.shared.shouldAskForBiometricSetup() {
+            print("🔍 [App] Showing biometric setup prompt on main app")
+            showBiometricSetupPrompt = true
+        }
+    }
+
+    private func enableBiometricFromApp() {
+        // Check if credentials are available from the recent login
+        if KeychainManager.shared.hasCredentials() {
+            DatabaseManager.shared.enableBiometricAuth()
+            print("✅ [App] FaceID enabled from main app")
+            
+            // ADD THIS LINE: Post notification to update LoginView UI
+            NotificationCenter.default.post(name: .didUpdateBiometricSettings, object: nil)
+            
+            // Test biometric authentication immediately
+            testBiometricAuthentication()
+        } else {
+            // Credentials not available, disable biometric
+            DatabaseManager.shared.disableBiometricAuth()
+            print("⚠️ [App] No credentials available for FaceID")
+            
+            // ADD THIS LINE: Post notification even for disable
+            NotificationCenter.default.post(name: .didUpdateBiometricSettings, object: nil)
+        }
+    }
+    
+    // MARK: - NEW METHOD: Test biometric immediately after enabling
+    private func testBiometricAuthentication() {
+        print("🔍 [App] Testing biometric authentication immediately")
+        
+        Task {
+            let result = await BiometricAuthManager.shared.authenticate(
+                reason: "Verify Face ID is working correctly"
+            )
+            
+            await MainActor.run {
+                switch result {
+                case .success:
+                    print("✅ [App] Biometric test successful - Face ID is working!")
+                    // Biometric is working, keep it enabled
+                case .failure(let error):
+                    print("❌ [App] Biometric test failed: \(error)")
+                    // If the test fails, optionally disable biometric
+                    // DatabaseManager.shared.disableBiometricAuth()
+                }
+            }
+        }
     }
 }
 

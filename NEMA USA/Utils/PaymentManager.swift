@@ -161,10 +161,15 @@ final class PaymentManager: NSObject {
                 if let panthiId = panthiId {
                     payload["panthi_id"] = panthiId
                 }
+                // NEW: Add packageId for program registration payments
+                if let packageId = packageId {
+                    payload["packageId"] = packageId
+                    print("✅ [PaymentManager] Including packageId for program registration: \(packageId)")
+                }
                 // ** Add line_items if it's a ticket purchase and lineItems are provided **
                 if let lineItems = lineItems, !lineItems.isEmpty {
                     payload["line_items"] = lineItems // This should be an array of dictionaries
- //                   print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
+    //                   print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
                 } else {
                     print("⚠️ [PaymentManager] line_items not provided or empty for ticket purchase type.")
                 }
