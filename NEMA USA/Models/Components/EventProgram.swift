@@ -39,6 +39,15 @@ struct EventProgram: Identifiable, Codable, Hashable {
     var isPaidProgram: Bool {
         return (othersFee ?? 0.0) > 0.0 || (paidMemberFee ?? 0.0) > 0.0
     }
+
+    var isWaitlistProgram: Bool {
+        return registrationStatus == "Join Waitlist"
+    }
+
+    // Computed property to Only require payment if it's a paid program AND not waitlist
+    var requiresPayment: Bool {
+        return isPaidProgram && !isWaitlistProgram
+    }
     
     func price(isMember: Bool) -> Double {
         if isMember && (paidMemberFee ?? 0.0) > 0.0 {

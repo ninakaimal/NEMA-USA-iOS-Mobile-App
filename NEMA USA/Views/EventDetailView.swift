@@ -419,9 +419,13 @@ fileprivate struct EventActionButtonsView: View {
         VStack(spacing: 15) {
             if event.showBuyTickets == true {
                 if event.isRegON == true {
-                    // Case 1A: Ticketing is ON. Show the "Purchase Tickets" button.
+                    // Check if tickets are waitlisted
+                    let buttonText = (event.isRegWaitlist == true) ? "Join Waitlist" : "Purchase Tickets"
+                    let buttonColor = (event.isRegWaitlist == true) ? Color.orange : Color.orange
+
+                    // Case 1A: Ticketing is ON or on Waitlist. Show the appropriate button.
                     NavigationLink(destination: EventRegistrationView(event: event)) {
-                        Text("Purchase Tickets")
+                        Text(buttonText)
                             .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
                             .background(Color.orange).foregroundColor(.white).cornerRadius(10)
                     }

@@ -72,6 +72,7 @@ class EventRepository: ObservableObject {
                     // cdEvent.isTBD removed
                     cdEvent.isRegON = eventData.isRegON ?? false
                     cdEvent.isTktON = eventData.isTktON ?? false
+                    cdEvent.isRegWaitlist = eventData.isRegWaitlist ?? false
                     cdEvent.showBuyTickets = eventData.showBuyTickets ?? false
                     cdEvent.date = eventData.date
                     cdEvent.timeString = eventData.timeString
@@ -449,6 +450,7 @@ class EventRepository: ObservableObject {
                     imageUrl: cdEvent.imageUrl,
                     isRegON: cdEvent.isRegON,
                     isTktON: cdEvent.isTktON,
+                    isRegWaitlist: cdEvent.isRegWaitlist,
                     showBuyTickets: cdEvent.showBuyTickets,
                     date: cdEvent.date,
                     timeString: cdEvent.timeString,

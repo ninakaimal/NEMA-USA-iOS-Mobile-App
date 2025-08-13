@@ -14,7 +14,11 @@ struct EventCard: View {
     init(event: Event) {
         self.event = event
         // PERFORMANCE: Default to no status to avoid expensive lookups
-        self.userStatuses = EventUserStatuses(hasPurchasedTickets: false, hasRegisteredPrograms: false)
+        self.userStatuses = EventUserStatuses(
+            hasPurchasedTickets: false,
+            hasRegisteredPrograms: false,
+            hasWaitlistPrograms: false
+        )
     }
     
     // Main initializer with status information
@@ -61,13 +65,16 @@ struct EventCard: View {
                 }
                 
                 // PERFORMANCE: Only show status tags if there are any
-                if userStatuses.hasPurchasedTickets || userStatuses.hasRegisteredPrograms {
+                if userStatuses.hasPurchasedTickets || userStatuses.hasRegisteredPrograms || userStatuses.hasWaitlistPrograms {
                     HStack(spacing: 6) {
                         if userStatuses.hasPurchasedTickets {
                             StatusTag(text: "Purchased", color: .green)
                         }
                         if userStatuses.hasRegisteredPrograms {
                             StatusTag(text: "Registered", color: .blue)
+                        }
+                        if userStatuses.hasWaitlistPrograms {  // ADD THIS
+                            StatusTag(text: "Waitlisted", color: .orange)
                         }
                     }
                     .padding(8)
@@ -115,6 +122,7 @@ struct EventCard: View {
 struct EventUserStatuses: Equatable {
     let hasPurchasedTickets: Bool
     let hasRegisteredPrograms: Bool
+    let hasWaitlistPrograms: Bool
 }
 
 struct StatusTag: View {

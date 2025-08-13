@@ -1021,7 +1021,7 @@ final class NetworkManager: NSObject {
  //       // --- ADD THIS LOGGING BLOCK TO SEE THE RAW JSON ---
  //       if let jsonString = String(data: data, encoding: .utf8) {
  //           print("--- RAW JSON RESPONSE for /v1/mobile/events ---")
- //           print(jsonString)
+ //           print("📄 [DEBUG] Purchase Records Raw JSON: \(jsonString)")
  //           print("--- END RAW JSON RESPONSE ---")
  //       }
  //       // --- END LOGGING BLOCK ---

@@ -9,6 +9,7 @@
         <attribute name="id" attributeType="String"/>
         <attribute name="imageUrl" optional="YES" attributeType="String"/>
         <attribute name="isRegON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="isRegWaitlist" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="isTktON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
@@ -68,6 +69,7 @@
         <attribute name="detailId" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="displayAmount" optional="YES" attributeType="String"/>
         <attribute name="eventDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="eventId" optional="YES" attributeType="String"/>
         <attribute name="eventName" attributeType="String"/>
         <attribute name="purchaseDate" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="recordId" attributeType="String"/>

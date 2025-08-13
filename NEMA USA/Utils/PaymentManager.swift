@@ -29,7 +29,7 @@ final class PaymentManager: NSObject {
     static let shared = PaymentManager()
     private override init() {}
     
-    private var createOrderCallback: ((Result<URL, PaymentError>) -> Void)?
+    private var createOrderCallback: ((Result<URL?, PaymentError>) -> Void)?
     private var payPalPaymentIdForCapture: String?
     private var appSpecificTicketPurchaseId: Int? // Your DB's ticket_purchase.id if returned by createOrder
 
@@ -94,7 +94,7 @@ final class PaymentManager: NSObject {
         userId: Int? = nil,
         panthiId: Int? = nil,
         lineItems: [[String: Any]]? = nil,
-        completion: @escaping (Result<URL, PaymentError>) -> Void
+        completion: @escaping (Result<URL?, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
             guard success else {
@@ -210,30 +210,91 @@ final class PaymentManager: NSObject {
             self.createOrderCallback = completion // Store the completion handler
 
             self.session.dataTask(with: req) { data, resp, err in
-                // ... (your existing network error handling, status code checking, and JSON parsing) ...
-                // Ensure you store appSpecificTicketPurchaseId if backend returns it
-                // Example from your existing code, ensure it's adapted:
-                if let json = try? JSONSerialization.jsonObject(with: data!) as? [String: Any] {
-                    if let ticketId = json["ticketPurchaseId"] as? Int {
-                        self.appSpecificTicketPurchaseId = ticketId
-                        UserDefaults.standard.set(ticketId, forKey: "ticketPurchaseId_from_createOrder") // Save it for captureOrder
-                        print("✅ [PaymentManager] Stored appSpecificTicketPurchaseId: \(ticketId)")
+                // Handle network errors
+                if let error = err {
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError(error.localizedDescription)))
                     }
-                    if let approvalURLString = json["approval_url"] as? String,
-                       let paymentId = json["payment_id"] as? String, // PayPal's Payment ID
-                       let approvalURL = URL(string: approvalURLString) {
-                        self.payPalPaymentIdForCapture = paymentId // Store PayPal's payment ID
-                        DispatchQueue.main.async {
-                            completion(.success(approvalURL))
-                        }
-                        return // Success path
-                    }
+                    return
                 }
-                // Fallthrough for errors
+                
+                guard let httpResponse = resp as? HTTPURLResponse,
+                      let responseData = data else {
+                    DispatchQueue.main.async {
+                        completion(.failure(.invalidResponse))
+                    }
+                    return
+                }
+                
+                // Check HTTP status
+                guard (200..<300).contains(httpResponse.statusCode) else {
+                    let body = String(data: responseData, encoding: .utf8) ?? "<no body>"
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError("HTTP \(httpResponse.statusCode): \(body)")))
+                    }
+                    return
+                }
+                
+                // Parse JSON response
+                guard let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] else {
+                    DispatchQueue.main.async {
+                        completion(.failure(.parseError("Failed to parse JSON")))
+                    }
+                    return
+                }
+                
+                // NEW: Check if this is a waitlist success response
+                if let success = json["success"] as? Bool,
+                   success == true,
+                   let ticketStatus = json["ticket_status"] as? String,
+                   ticketStatus == "waiting_list" {
+                    // This is a successful waitlist registration
+                    print("✅ [PaymentManager] Waitlist registration successful")
+                    
+                    // Store the ticket ID if needed
+                    if let ticketId = json["ticket_id"] as? Int {
+                        UserDefaults.standard.set(ticketId, forKey: "ticketPurchaseId_from_createOrder")
+                        print("✅ [PaymentManager] Stored waitlist ticket ID: \(ticketId)")
+                    }
+                    
+                    // Return success without URL (no PayPal needed for waitlist)
+                    DispatchQueue.main.async {
+                        completion(.success(nil))
+                    }
+                    return
+                }
+                
+                // Check for error response
+                if let error = json["error"] as? String {
+                    print("❌ [PaymentManager] Server returned error: \(error)")
+                    DispatchQueue.main.async {
+                        completion(.failure(.serverError(error)))
+                    }
+                    return
+                }
+                
+                // Original PayPal response parsing (for regular purchases)
+                if let ticketId = json["ticketPurchaseId"] as? Int {
+                    self.appSpecificTicketPurchaseId = ticketId
+                    UserDefaults.standard.set(ticketId, forKey: "ticketPurchaseId_from_createOrder")
+                    print("✅ [PaymentManager] Stored appSpecificTicketPurchaseId: \(ticketId)")
+                }
+                
+                if let approvalURLString = json["approval_url"] as? String,
+                   let paymentId = json["payment_id"] as? String,
+                   let approvalURL = URL(string: approvalURLString) {
+                    self.payPalPaymentIdForCapture = paymentId
+                    DispatchQueue.main.async {
+                        completion(.success(approvalURL))
+                    }
+                    return
+                }
+                
+                // If we get here, it's an unexpected response format
+                let responseBody = String(data: responseData, encoding: .utf8) ?? "<no data>"
+                print("❌ [PaymentManager] createOrder unexpected response format. Body: \(responseBody)")
                 DispatchQueue.main.async {
-                     let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no data>"
-                     print("❌ [PaymentManager] createOrder failed to parse approval_url or payment_id. Body: \(responseBody)")
-                     completion(.failure(.parseError("Missing approval_url or payment_id in response. Body: \(responseBody)")))
+                    completion(.failure(.parseError("Unexpected response format")))
                 }
             }.resume()
         }

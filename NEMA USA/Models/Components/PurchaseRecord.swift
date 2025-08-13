@@ -17,6 +17,7 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
     let displayAmount: String?
     let status: String
     let detailId: Int
+    let eventId: String?
     
     var id: String { recordId }
     
@@ -26,6 +27,7 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
         case eventDate = "eventDate"
         case displayAmount = "displayAmount"
         case detailId = "detailId"
+        case eventId = "eventId"
     }
     
     init(from decoder: Decoder) throws {
@@ -39,6 +41,7 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
         displayAmount = try container.decodeIfPresent(String.self, forKey: .displayAmount)  // CHANGED to optional
         status = try container.decode(String.self, forKey: .status)
         detailId = try container.decode(Int.self, forKey: .detailId)
+        eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
         
         // Parse dates using ISO8601 format
         let purchaseDateString = try container.decode(String.self, forKey: .purchaseDate)
@@ -54,7 +57,7 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
     }
     
     // Manual initializer for Core Data mapping
-    init(recordId: String, type: String, purchaseDate: Date, eventDate: Date?, eventName: String, title: String, subtitle: String?, displayAmount: String?, status: String, detailId: Int) {
+    init(recordId: String, type: String, purchaseDate: Date, eventDate: Date?, eventName: String, title: String, subtitle: String?, displayAmount: String?, status: String, detailId: Int, eventId: String? = nil) {
         self.recordId = recordId
         self.type = type
         self.purchaseDate = purchaseDate
@@ -65,5 +68,6 @@ struct PurchaseRecord: Identifiable, Codable, Hashable {
         self.displayAmount = displayAmount
         self.status = status
         self.detailId = detailId
+        self.eventId = eventId
     }
 }

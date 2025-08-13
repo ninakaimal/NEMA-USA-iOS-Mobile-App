@@ -215,13 +215,19 @@ class ProgramRegistrationViewModel: ObservableObject {
                 self.isProcessingPayment = false
                 switch result {
                 case .success(let url):
-                    // Validate URL before presenting
-                    guard url.scheme == "https" else {
-                        self.paymentErrorMessage = "Invalid payment URL received. Please try again."
+                    if let url = url {
+                        // Regular payment with PayPal URL
+                        guard url.scheme == "https" else {
+                            self.paymentErrorMessage = "Invalid payment URL received"
+                            self.showPaymentError = true
+                            return
+                        }
+                        self.approvalURL = url
+                    } else {
+                        // Programs always need payment, so nil URL is an error
+                        self.paymentErrorMessage = "Payment setup failed - no payment URL received"
                         self.showPaymentError = true
-                        return
                     }
-                    self.approvalURL = url
                     
                 case .failure(let error):
                     // Comprehensive error handling for payment creation
@@ -322,6 +328,7 @@ struct ProgramRegistrationView: View {
     // ENHANCED: Track view state for better error handling
     @State private var hasAppeared = false
     @State private var isRefreshing = false
+    @State private var showSuccessAlert = false
     
     var body: some View {
         NavigationView {
@@ -331,7 +338,7 @@ struct ProgramRegistrationView: View {
             } else {
                 Form {
                     // User info section for paid programs
-                    if program.isPaidProgram {
+                    if program.requiresPayment {
                         Section(header: HStack {
                             Text("Your Information")
                             Text("(\(program.formattedPrice))")
@@ -449,7 +456,7 @@ struct ProgramRegistrationView: View {
                     // Submit Button
                     Section {
                         Button(action: {
-                            if program.isPaidProgram {
+                            if program.requiresPayment {
                                 let validation = viewModel.canSubmitWithPayment(
                                     for: program,
                                     name: memberNameText,
@@ -482,12 +489,14 @@ struct ProgramRegistrationView: View {
                                     Text(viewModel.isProcessingPayment ? "Processing Payment..." : "Registering...")
                                         .padding(.leading, 8)
                                 } else {
-                                    if program.isPaidProgram {
+                                    if program.isWaitlistProgram {
+                                        Text("Join Waitlist")
+                                    } else if program.isPaidProgram { // Keep this for non-waitlist paid programs
                                         let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
                                         let amount = program.price(isMember: isMember)
                                         Text("Pay $\(String(format: "%.0f", amount)) & Register")
                                     } else {
-                                        Text(program.registrationStatus == "Join Waitlist" ? "Join Waitlist" : "Register")
+                                        Text("Register") // For free, non-waitlist programs
                                     }
                                 }
                                 Spacer()
@@ -553,7 +562,18 @@ struct ProgramRegistrationView: View {
                         presentationMode.wrappedValue.dismiss()
                     }
                 } message: {
-                    Text("You have successfully registered for \(program.name). A confirmation email has been sent.")
+                    if program.isWaitlistProgram {
+                        Text("You have been added to the waitlist for \(program.name). A confirmation email has been sent.")
+                    } else {
+                        Text("You have successfully registered for \(program.name). A confirmation email has been sent.")
+                    }
+                }
+                .alert("Success!", isPresented: $showSuccessAlert) {
+                    Button("OK") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                } message: {
+                    Text("Registration successful! Check your email for confirmation.")
                 }
                 .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
                     Button("OK") { viewModel.errorMessage = nil }

@@ -73,7 +73,7 @@ struct EventRegistrationView: View {
     
     var body: some View {
         content
-            .navigationTitle("\(event.title) Tickets") // Set title here
+            .navigationTitle(event.isRegWaitlist == true ? "\(event.title) Waitlist" : "\(event.title) Tickets") // Set title here
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLoginSheet, onDismiss: {
                 loadMemberInfo()
@@ -101,7 +101,7 @@ struct EventRegistrationView: View {
                 LoginView() // Make sure LoginView updates DatabaseManager.shared states
             }
             .alert(
-                "Confirm Purchase",
+                "Confirm \(event.isRegWaitlist == true ? "Join Waitlist" : "Purchase")",
                 isPresented: $showPurchaseConfirmation
             ) {
                 Button("Cancel", role: .cancel) { }
@@ -123,12 +123,15 @@ struct EventRegistrationView: View {
                 Text(paymentErrorMessage)
             }
             .alert(
-                "Purchase Successful!", // Updated title
+                "Success!", // Updated title
                 isPresented: $showPurchaseSuccess
-            ) {
-                Button("OK") { presentationMode.wrappedValue.dismiss() }
+            ) {Button("OK") { presentationMode.wrappedValue.dismiss() }
             } message: {
-                Text("Check your email \(emailAddressText) for confirmation.")
+                if event.isRegWaitlist == true {
+                    Text("You have been added to the waitlist for \(event.title). Check your email \(emailAddressText) for confirmation.")
+                } else {
+                    Text("Purchase successful! Check your email \(emailAddressText) for confirmation.")
+                }
             }
         
         // MARK: – PayPal approval sheet
@@ -256,10 +259,9 @@ struct EventRegistrationView: View {
                     
                     Picker("Select Slot", selection: $viewModel.selectedPanthiId) {
                         Text("Select Panthi").tag(nil as Int?) // Placeholder for no selection
-                        ForEach(viewModel.availablePanthis) { panthi in
-                            Text("\(panthi.name) (\(panthi.availableSlots > 0 ? "\(panthi.availableSlots) available" : "SOLD OUT"))")
+                        ForEach(viewModel.availablePanthis.filter { $0.availableSlots > 0 || $0.id == viewModel.selectedPanthiId }) { panthi in
+                            Text(panthi.name)
                                 .tag(panthi.id as Int?)
-                                .disabled(panthi.availableSlots <= 0 && viewModel.selectedPanthiId != panthi.id)
                         }
                     }
                     .pickerStyle(MenuPickerStyle()) // Standard dropdown style
@@ -272,7 +274,7 @@ struct EventRegistrationView: View {
                 .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
                 .padding(.horizontal)
             } else if !viewModel.isLoading && viewModel.errorMessage == nil { // Done loading, no error, but still no panthis
-                Text("No time slots are currently available for this event.")
+                Text("No time slots (Panthi) are currently available for this event. Please contact arts@nemausa.org")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .padding()
@@ -411,6 +413,8 @@ struct EventRegistrationView: View {
     
     private var purchaseButton: some View {
         if event.isRegON ?? false {
+            let isWaitlist = event.isRegWaitlist == true
+            let buttonText = isWaitlist ? "Join Waitlist" : "Purchase"
             let canProceed = viewModel.canProceedToPurchase(
                 acceptedTerms: acceptedTerms,
                 eventUsesPanthi: event.usesPanthi ?? false,
@@ -429,7 +433,7 @@ struct EventRegistrationView: View {
                     Text("Processing...")
                 }
             } else {
-                Text("Purchase")
+                Text(buttonText)
             }
         }
         .disabled(!canProceed)
@@ -538,46 +542,92 @@ struct EventRegistrationView: View {
         }
         
         print("✅ [EventRegView] Constructed lineItemsPayload: \(lineItemsPayload)")
-
-        PaymentManager.shared.createOrder( // This is the call that needs to match the signature
-            amount: String(format: "%.2f", viewModel.totalAmount),
-            eventTitle: event.title,
-            eventID: eventIDInt,         // Your app's Event ID
-            email: emailAddressText,
-            name: memberNameText,
-            phone: phoneText,
-            // For event ticket purchases, membershipType, packageId, packageYears, userId are usually nil
-            membershipType: nil,        // Explicitly nil for ticket purchases
-            packageId: nil,             // Explicitly nil
-            packageYears: nil,          // Explicitly nil
-            userId: nil,                // Explicitly nil (unless you link ticket purchase to a logged-in user ID here)
-            panthiId: viewModel.selectedPanthiId,
-            lineItems: lineItemsPayload,
-            completion: { result in // This is the completion handler
-                DispatchQueue.main.async {
-                    self.isProcessingPayment = false
-                    switch result {
-                    case .success(let url):
-                        self.approvalURL = url
-                    case .failure(let error):
-                        var friendlyMessage = "Could not create payment order."
-                        if let paymentErr = error as? PaymentError { // Assuming PaymentError is your custom error enum
-                            switch paymentErr {
-                            case .serverError(let specificMsg): friendlyMessage += " Server error: \(specificMsg)"
-                            case .invalidResponse: friendlyMessage += " Invalid response from server."
-                            case .parseError(let specificMsg): friendlyMessage += " Error parsing server response: \(specificMsg)"
+        
+        // CHECK IF WAITLIST - Skip PayPal if waitlisted
+        if event.isRegWaitlist == true {
+            print("✅ [EventRegView] Waitlist registration - skipping PayPal")
+            
+            // Call the same createOrder API but it will handle waitlist differently
+            PaymentManager.shared.createOrder(
+                amount: "0.00",  // Waitlist is free
+                eventTitle: event.title,
+                eventID: eventIDInt,
+                email: emailAddressText,
+                name: memberNameText,
+                phone: phoneText,
+                membershipType: nil,
+                packageId: nil,
+                packageYears: nil,
+                userId: nil,
+                panthiId: viewModel.selectedPanthiId,
+                lineItems: lineItemsPayload,
+                completion: { result in
+                    DispatchQueue.main.async {
+                        self.isProcessingPayment = false
+                        switch result {
+                        case .success(_):
+                            // For waitlist, we don't need PayPal URL, just show success
+                            self.showPurchaseSuccess = true
+                        case .failure(let error):
+                            var friendlyMessage = "Could not complete waitlist registration."
+                            if let paymentErr = error as? PaymentError {
+                                switch paymentErr {
+                                case .serverError(let specificMsg): friendlyMessage += " Server error: \(specificMsg)"
+                                case .invalidResponse: friendlyMessage += " Invalid response from server."
+                                case .parseError(let specificMsg): friendlyMessage += " Error parsing server response: \(specificMsg)"
+                                }
+                            } else {
+                                friendlyMessage += " Error: \(error.localizedDescription)"
                             }
-                        } else {
-                            friendlyMessage += " Error: \(error.localizedDescription)"
+                            self.paymentErrorMessage = friendlyMessage
+                            self.showPaymentError = true
                         }
-                        self.paymentErrorMessage = friendlyMessage
-                        self.showPaymentError = true
                     }
                 }
-            }
-        )
+            )
+        } else {
+            // Regular purchase flow with PayPal
+            
+            PaymentManager.shared.createOrder( // This is the call that needs to match the signature
+                amount: String(format: "%.2f", viewModel.totalAmount),
+                eventTitle: event.title,
+                eventID: eventIDInt,         // Your app's Event ID
+                email: emailAddressText,
+                name: memberNameText,
+                phone: phoneText,
+                // For event ticket purchases, membershipType, packageId, packageYears, userId are usually nil
+                membershipType: nil,        // Explicitly nil for ticket purchases
+                packageId: nil,             // Explicitly nil
+                packageYears: nil,          // Explicitly nil
+                userId: nil,                // Explicitly nil (unless you link ticket purchase to a logged-in user ID here)
+                panthiId: viewModel.selectedPanthiId,
+                lineItems: lineItemsPayload,
+                completion: { result in // This is the completion handler
+                    DispatchQueue.main.async {
+                        self.isProcessingPayment = false
+                        switch result {
+                        case .success(let url):
+                            self.approvalURL = url
+                        case .failure(let error):
+                            var friendlyMessage = "Could not create payment order."
+                            if let paymentErr = error as? PaymentError { // Assuming PaymentError is your custom error enum
+                                switch paymentErr {
+                                case .serverError(let specificMsg): friendlyMessage += " Server error: \(specificMsg)"
+                                case .invalidResponse: friendlyMessage += " Invalid response from server."
+                                case .parseError(let specificMsg): friendlyMessage += " Error parsing server response: \(specificMsg)"
+                                }
+                            } else {
+                                friendlyMessage += " Error: \(error.localizedDescription)"
+                            }
+                            self.paymentErrorMessage = friendlyMessage
+                            self.showPaymentError = true
+                        }
+                    }
+                }
+            )
+        }
     }
-    
+
     private func handlePayPalRedirect(url: URL) {
         guard
             let comps     = URLComponents(url: url, resolvingAgainstBaseURL: false),

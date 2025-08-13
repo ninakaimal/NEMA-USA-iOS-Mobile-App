@@ -173,9 +173,11 @@ struct MyEventCard: View {
     
     private var statusColor: Color {
         switch record.status.lowercased() {
-        case "paid", "success":
+        case "paid":
             return .green
-        case "wait_list", "wait list":
+        case "success":
+            return .blue
+        case "wait_list", "wait list", "waiting_list", "waitlist":
             return .orange
         case "pending":
             return .yellow
@@ -188,6 +190,10 @@ struct MyEventCard: View {
         switch record.status.lowercased() {
         case "success":
             return "Registered"
+        case "paid":
+            return "Purchased"
+        case "wait_list", "wait list", "waiting_list", "waitlist":
+            return "Waitlisted"
         default:
             return record.status
         }

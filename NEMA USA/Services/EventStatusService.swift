@@ -83,7 +83,8 @@ class EventStatusService: ObservableObject {
                     subtitle: cdRecord.subtitle,
                     displayAmount: cdRecord.displayAmount,
                     status: cdRecord.status ?? "",
-                    detailId: Int(cdRecord.detailId)
+                    detailId: Int(cdRecord.detailId),
+                    eventId: cdRecord.eventId
                 )
             }
             print("[EventStatusService] Loaded \(self.purchaseRecords.count) valid purchase records from Core Data")
@@ -131,27 +132,53 @@ class EventStatusService: ObservableObject {
     }
     
     private func getStatusesForEvent(_ event: Event) -> EventUserStatuses {
-        let normalizedEventName = eventNameCache[event.id] ?? normalizeEventName(event.title)
-        
-        // PERFORMANCE: Use simple contains() instead of exact matching for speed
+        // FIRST: Try to match by eventId if available
         let matchingRecords = purchaseRecords.filter { record in
+            // If both have eventId, use exact match
+            if let recordEventId = record.eventId, !recordEventId.isEmpty {
+                return recordEventId == event.id
+            }
+            
+            // FALLBACK: For old records without eventId, use name matching
+            let normalizedEventName = eventNameCache[event.id] ?? normalizeEventName(event.title)
             let normalizedRecordName = normalizeEventName(record.eventName)
-            return normalizedRecordName.contains(normalizedEventName) ||
-                   normalizedEventName.contains(normalizedRecordName)
+            return normalizedRecordName == normalizedEventName
+        }
+        
+        // DEBUG: Add this to see what's matching
+        if event.title.contains("Onam 2025") && !matchingRecords.isEmpty {
+            print("🔍 [EventStatusService] Event '\(event.title)' (ID: \(event.id)) matched \(matchingRecords.count) records:")
+            for record in matchingRecords {
+                print("  - Type: \(record.type), Status: \(record.status), EventID: \(record.eventId ?? "nil"), EventName: \(record.eventName)")
+            }
         }
         
         let hasPurchasedTickets = matchingRecords.contains { record in
             record.type.lowercased().contains("ticket") && isRecordValid(record)
         }
         
+        // Separate regular registrations from waitlist
         let hasRegisteredPrograms = matchingRecords.contains { record in
-            record.type.lowercased().contains("program") && isRecordValid(record)
+            record.type.lowercased().contains("program") &&
+            !isWaitlistStatus(record.status) &&
+            isRecordValid(record)
+        }
+        
+        let hasWaitlistPrograms = matchingRecords.contains { record in
+            (record.type.lowercased().contains("program") && isWaitlistStatus(record.status)) ||
+            (record.type.lowercased().contains("ticket") && isWaitlistStatus(record.status))
         }
         
         return EventUserStatuses(
             hasPurchasedTickets: hasPurchasedTickets,
-            hasRegisteredPrograms: hasRegisteredPrograms
+            hasRegisteredPrograms: hasRegisteredPrograms,
+            hasWaitlistPrograms: hasWaitlistPrograms
         )
+    }
+
+    private func isWaitlistStatus(_ status: String) -> Bool {
+        let waitlistStatuses = ["wait_list", "wait list", "waitlist", "waiting_list"]
+        return waitlistStatuses.contains(status.lowercased())
     }
     
     // MARK: - Simplified Helper Functions

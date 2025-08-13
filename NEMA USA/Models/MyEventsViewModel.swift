@@ -224,6 +224,7 @@ class MyEventsViewModel: ObservableObject {
                 cdRecord.displayAmount = record.displayAmount
                 cdRecord.status = record.status
                 cdRecord.detailId = Int64(record.detailId)
+                cdRecord.eventId = record.eventId
             }
             
             if viewContext.hasChanges {
