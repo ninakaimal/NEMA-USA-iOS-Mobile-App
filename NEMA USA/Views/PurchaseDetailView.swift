@@ -98,6 +98,18 @@ struct HeroHeaderSection: View {
                 .background(Color.orange.opacity(0.1))
                 .cornerRadius(20)
                 
+                // Payment reminder for Approved status
+                if record.status.lowercased() == "approved" {
+                    Text("Please complete the payment within 24 hours to confirm your ticket by logging into www.nemausa.org and visiting the MyAccount/Tickets page.")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.05))
+                        .cornerRadius(10)
+                }
+                
                 // Amount - Prominent display
                 VStack(spacing: 4) {
                     Text("Total Amount")
@@ -185,20 +197,35 @@ struct StatusBadge: View {
         switch status.lowercased() {
         case "success":
             return "Registered"
+        case "paid":
+            return "Purchased"
+        case "wait_list", "wait list", "waiting_list", "waiting list", "waitlist":
+            return "Waitlisted"
+        case "approved":
+            return "Approved"
+        case "rejected":
+            return "Rejected"
+        case "failed":
+            return "Failed"
         default:
-            return status.replacingOccurrences(of: "Success", with: "Registered")
-                        .replacingOccurrences(of: "success", with: "Registered")
+            return status
         }
     }
     
     private var statusConfig: (color: Color, icon: String) {
         switch status.lowercased() {
-        case "paid", "success":
+        case "paid":
             return (.green, "checkmark.circle.fill")
-        case "wait_list", "wait list":
+        case "approved":
+            return (Color.green.opacity(0.6), "checkmark.circle.fill")  // Light green
+        case "success", "registered":
+            return (.blue, "checkmark.circle.fill")
+        case "wait_list", "wait list", "waiting_list", "waiting list", "waitlist":
             return (.orange, "clock.fill")
         case "pending":
             return (.yellow, "hourglass")
+        case "rejected", "failed":
+            return (.red, "xmark.circle.fill")
         default:
             return (.gray, "questionmark.circle.fill")
         }
@@ -208,9 +235,9 @@ struct StatusBadge: View {
         HStack(spacing: 6) {
             Image(systemName: statusConfig.icon)
                 .font(.caption)
-            Text(displayStatus.uppercased())
-                .font(.caption2)
-                .fontWeight(.bold)
+            Text(displayStatus)
+                .font(.caption)
+                .fontWeight(.semibold)
         }
         .foregroundColor(.white)
         .padding(.horizontal, 12)

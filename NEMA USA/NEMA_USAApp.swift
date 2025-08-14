@@ -112,7 +112,7 @@ struct NEMA_USAApp: App {
                     showUpdateError = hasError
                 }
                 .sheet(isPresented: $showUpdatePrompt) {
-                    UpdatePromptView(updateType: versionManager.updateType)
+                    UpdatePromptView(updateType: versionManager.updateType, versionManager: versionManager)
                 }
                 .sheet(isPresented: $showUpdateError) {
                     if let error = versionManager.lastError {
@@ -154,8 +154,48 @@ struct NEMA_USAApp: App {
             
     // Version checking method
     private func checkForUpdatesOnLaunch() async {
-        print("📱 [App] Checking for app updates...")
+        print("📱 [App] Starting version check...")
+        print("📱 [App] Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+        print("📱 [App] Current version: \(versionManager.getCurrentAppVersion())")
+        
+//        // ========= ADD TEST CODE HERE (Line 177) =========
+//        #if DEBUG
+//        // Wait 2 seconds then force show update popup for testing
+//        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+//            print("🧪 [TEST] Forcing update popup for testing")
+//
+//            let testVersionInfo = AppStoreVersionInfo(
+//                version: "1.0.12",  // Fake newer version
+//                trackId: 6738434547,  // Your app ID
+//                trackViewUrl: "itms-apps://apps.apple.com/us/app/nema-usa/id6744124012",
+//                releaseNotes: "• Bug fixes and improvements\n• Performance enhancements\n• New features added",
+//                currentVersionReleaseDate: "2025-08-14"
+//            )
+//
+//           // Force the update popup to show
+//            self.versionManager.updateType = .optional(testVersionInfo)
+//            self.showUpdatePrompt = true  // Force the sheet to show
+//
+//            print("🧪 [TEST] Update popup should now be visible")
+//        }
+//        return  // Skip real check during testing
+//        #endif
+//        // ========= END TEST CODE =========
+        
         await versionManager.checkForUpdates()
+        
+        // Add debugging after check completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            print("📱 [App] Version check complete:")
+            print("  - Update type: \(self.versionManager.updateType)")
+            print("  - Available version: \(self.versionManager.availableVersion ?? "none")")
+            print("  - Has update: \(self.versionManager.hasUpdate)")
+            print("  - Show prompt state: \(self.showUpdatePrompt)")
+            
+            if let error = self.versionManager.lastError {
+                print("  - Error: \(error)")
+            }
+        }
     }
     
     private func requestNotificationPermissions() async {

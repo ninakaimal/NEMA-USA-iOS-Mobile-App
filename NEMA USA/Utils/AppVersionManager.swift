@@ -132,10 +132,16 @@ final class AppVersionManager: ObservableObject {
         // Don't check if already checking
         guard !isCheckingVersion else { return }
         
-        // Check if we should skip this check (unless forced)
+        // For "Remind Later", always check but respect the forced flag for other skips
         if !forced && !shouldCheckForUpdates() {
-            print("📱 [AppVersionManager] Skipping version check (too recent)")
-            return
+            // Check if there was a "remind later" - if yes, still check
+            if case .optional = updateType {
+                print("📱 [AppVersionManager] User selected 'Remind Later', checking again")
+                // Continue with the check
+            } else {
+                print("📱 [AppVersionManager] Skipping version check (too recent)")
+                return
+            }
         }
         
         await MainActor.run {

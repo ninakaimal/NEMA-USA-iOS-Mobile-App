@@ -175,12 +175,16 @@ struct MyEventCard: View {
         switch record.status.lowercased() {
         case "paid":
             return .green
-        case "success":
+        case "approved":
+            return Color.green.opacity(0.6)
+        case "success", "registered":
             return .blue
-        case "wait_list", "wait list", "waiting_list", "waitlist":
+        case "wait_list", "wait list", "waiting_list", "waiting list", "waitlist":
             return .orange
         case "pending":
             return .yellow
+        case "rejected", "failed":
+            return .red
         default:
             return .gray
         }
@@ -192,8 +196,14 @@ struct MyEventCard: View {
             return "Registered"
         case "paid":
             return "Purchased"
-        case "wait_list", "wait list", "waiting_list", "waitlist":
+        case "wait_list", "wait list", "waiting_list", "waiting list", "waitlist":
             return "Waitlisted"
+        case "approved":
+            return "Approved"
+        case "rejected":
+            return "Rejected"
+        case "failed":
+            return "Failed"
         default:
             return record.status
         }

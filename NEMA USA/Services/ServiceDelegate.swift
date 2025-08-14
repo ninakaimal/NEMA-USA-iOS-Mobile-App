@@ -29,7 +29,8 @@ class ServiceDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenter
     func applicationDidBecomeActive(_ application: UIApplication) {
         print("📱 [ServiceDelegate] App became active - checking for updates")
         Task {
-            await AppVersionManager.shared.checkForUpdates()
+            // Force check when app becomes active to ensure "Remind Later" works
+            await AppVersionManager.shared.checkForUpdates(forced: true)
         }
     }
     

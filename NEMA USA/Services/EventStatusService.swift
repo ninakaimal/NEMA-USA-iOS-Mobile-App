@@ -189,7 +189,6 @@ class EventStatusService: ObservableObject {
     }
     
     private func isRecordValid(_ record: PurchaseRecord) -> Bool {
-        // PERFORMANCE: Simplified validation
         let validStatuses = ["paid", "success", "confirmed", "wait_list", "wait list"]
         return validStatuses.contains(record.status.lowercased())
     }

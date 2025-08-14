@@ -23,11 +23,20 @@ struct UpdatePromptView: View {
             VStack(spacing: 24) {
                 // App Icon and Title
                 VStack(spacing: 16) {
-                    Image("AppIcon") // Make sure this matches your app icon name
-                        .resizable()
-                        .frame(width: 80, height: 80)
-                        .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    // This gets the actual app icon
+                    if let uiImage = UIImage(named: "AppIcon60x60") ?? UIImage(named: "AppIcon") {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .frame(width: 80, height: 80)
+                            .cornerRadius(16)
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    } else {
+                        // Fallback to SF Symbol
+                        Image(systemName: "arrow.down.app.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.orange)
+                            .frame(width: 80, height: 80)
+                    }
                     
                     Text(updateTitle)
                         .font(.title2)
@@ -116,19 +125,6 @@ struct UpdatePromptView: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
                                     .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(10)
-                            }
-                            
-                            // Skip Button
-                            Button(action: {
-                                handleSkipTapped()
-                            }) {
-                                Text("Skip")
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
-                                    .background(Color(.systemGray5))
                                     .cornerRadius(10)
                             }
                         }

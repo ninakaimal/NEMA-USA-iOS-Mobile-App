@@ -63,6 +63,10 @@ struct AccountView: View {
     @State private var newMemberPhone: String? = nil
     @State private var newMemberDOBMonth = Calendar.current.component(.month, from: Date())
     @State private var newMemberDOBYear = Calendar.current.component(.year, from: Date() - 30) // Default to 30 years ago
+    // app update check vars
+    @State private var showUpdateCheckAlert = false
+    @State private var updateCheckMessage = ""
+    @State private var isCheckingForUpdates = false
     
     struct MonthYearPicker: View {
         @Binding var selectedMonth: Int
@@ -285,6 +289,15 @@ struct AccountView: View {
                     secondaryButton: .cancel()
                 )
             }
+
+        // MARK: - ADD THIS ALERT MODIFIER FOR APP UPDATE CHECK CONFIRMATION
+            .alert("Update Check", isPresented: $showUpdateCheckAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(updateCheckMessage)
+            }
+        
+        
         // MARK: - ADD THIS ALERT MODIFIER FOR DELETE CONFIRMATION
             .alert("Confirm Deletion", isPresented: $showDeleteFamilyMemberConfirmation, presenting: familyMemberToDelete) { memberToDeleteDetails in
                 // 'memberToDeleteDetails' is the non-nil 'familyMemberToDelete' passed to the alert
@@ -382,22 +395,124 @@ struct AccountView: View {
                     familySection
                     
                     VStack(spacing: 15) {
-                        Text("Account Management")
+                        Text("App Management")
                             .font(.headline)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Log Out Button (This remains unchanged)
+                        // Check for Updates Button
+                        Button(action: {
+                            guard !isCheckingForUpdates else { return } // Prevent multiple taps
+                            
+                            isCheckingForUpdates = true // Start loading state
+                            
+                            Task {
+                                print("🔄 [AccountView] Manual update check initiated")
+                                print("📱 [AccountView] Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+                                print("📱 [AccountView] Current version: \(AppVersionManager.shared.getCurrentAppVersion())")
+                                
+                                await AppVersionManager.shared.checkForUpdates(forced: true)
+                                
+                                // Check result and show appropriate alert
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                    print("📱 [AccountView] Update check result:")
+                                    print("  - Has update: \(AppVersionManager.shared.hasUpdate)")
+                                    print("  - Available version: \(AppVersionManager.shared.availableVersion ?? "none")")
+                                    print("  - Update type: \(AppVersionManager.shared.updateType)")
+                                    
+                                    if let error = AppVersionManager.shared.lastError {
+                                        print("  - Error: \(error)")
+                                        self.updateCheckMessage = "Unable to check for updates. Please try again later."
+                                        self.showUpdateCheckAlert = true
+                                    } else if AppVersionManager.shared.hasUpdate {
+                                        // Update is available - the sheet will show automatically via NEMA_USAApp
+                                        print("✅ [AccountView] Update available, sheet should display")
+                                    } else {
+                                        // No update available - show confirmation
+                                        self.updateCheckMessage = "You have the latest version installed! (v\(AppVersionManager.shared.getCurrentAppVersion()))"
+                                        self.showUpdateCheckAlert = true
+                                    }
+                                    
+                                    // Reset loading state
+                                    isCheckingForUpdates = false
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 8) {
+                                if isCheckingForUpdates {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "arrow.down.app.fill")
+                                        .font(.system(size: 14))
+                                }
+                                
+                                Text(isCheckingForUpdates ? "Checking..." : "Check for Updates")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
+                            .background(isCheckingForUpdates ? Color.gray.opacity(0.3) : Color.orange.opacity(0.1))
+                            .foregroundColor(isCheckingForUpdates ? .gray : .orange)
+                            .cornerRadius(8)
+                        }
+                        .disabled(isCheckingForUpdates) // Disable button while checking
+
+//                        // ================ TEMPORARY TEST CODE FOR VERSION UPDATE CHECK - REMOVE BEFORE RELEASE  ================
+//                        #if DEBUG
+//
+//                        Button(action: {
+//                            Task {
+//                                print("🔄 [TEST MODE] Forcing update prompt for testing")
+//
+//                                // Create a fake update info
+//                                let testVersionInfo = AppStoreVersionInfo(
+//                                    version: "1.1.0",  // Fake newer version
+//                                    trackId: 6738434547,  // Your actual app ID
+//                                    trackViewUrl: "https://apps.apple.com/us/app/nema-usa/id6738434547",
+//                                   releaseNotes: "TEST MODE: This is a simulated update to verify the system works",
+//                                    currentVersionReleaseDate: "2025-08-13"
+//                                )
+//
+//                                // Force set the update type
+//                                await MainActor.run {
+//                                    AppVersionManager.shared.updateType = .optional(testVersionInfo)
+//                                }
+//
+//                                print("✅ [TEST MODE] Update prompt should now appear")
+//                            }
+//                        }) {
+//                            HStack {
+//                                Image(systemName: "exclamationmark.triangle.fill")
+//                                    .font(.system(size: 14))
+//                                Text("TEST: Force Update Prompt")
+//                                    .font(.subheadline)
+//                                    .fontWeight(.medium)
+//                            }
+//                            .frame(maxWidth: .infinity)
+//                            .padding(.vertical, 10)
+//                            .padding(.horizontal, 12)
+//                            .background(Color.red.opacity(0.1))
+//                            .foregroundColor(.red)
+//                            .cornerRadius(8)
+//                        }
+//                        #endif
+//                        // ================ END OF TEST MODE BUTTON ================
+
+                        // Log Out Button - UPDATED SIZE
                         Button(role: .destructive, action: { showLogoutConfirmation = true }) {
                             Text("Log Out")
-                                .fontWeight(.semibold)
+                                .font(.subheadline)           // Smaller text
+                                .fontWeight(.medium)          // Slightly less bold
                                 .frame(maxWidth: .infinity)
-                                .padding()
+                                .padding(.vertical, 10)       // Reduced padding
+                                .padding(.horizontal, 12)     // Reduced horizontal padding
                                 .background(Color.gray.opacity(0.2))
                                 .foregroundColor(.primary)
-                                .cornerRadius(10)
-                        }
-                        
-                        // Required "Delete Account" button with new, subtle style
+                                .cornerRadius(8)              // Slightly smaller corner radius
+                        }                        // Required "Delete Account" button with new, subtle style
                         /*
                         Button("Delete Account", role: .destructive, action: {
                             deleteConfirmationText = "" // Reset text field before showing sheet
