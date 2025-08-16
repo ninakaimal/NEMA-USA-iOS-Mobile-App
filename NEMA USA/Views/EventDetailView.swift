@@ -3,7 +3,7 @@
 //  NEMA USA
 //  Created by Nina on 4/16/25.
 //  Updated by Sajith on 4/22/25
-//
+//  Updated by Sajith on 8/14/25 - added sub-events for Drishya
 
 import SwiftUI
 import Kingfisher
@@ -23,7 +23,6 @@ extension View {
 }
 
 // ViewModel manages fetching and storing the programs for the detail view
-
 @MainActor
 class EventProgramsViewModel: ObservableObject {
     @Published var programs: [EventProgram] = []
@@ -88,8 +87,6 @@ func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws 
         return result
     }
 }
-
-
 
 // UI COMPONENT 2: The main card that holds the list of programs.
 fileprivate struct CompetitionsCardView: View {
@@ -409,7 +406,6 @@ fileprivate struct DescriptionCardView: View {
     }
 }
 
-
 fileprivate struct EventActionButtonsView: View {
     let event: Event // Needed for isRegON, eventLink and for NavigationLink destination
     let hasPrograms: Bool
@@ -464,6 +460,138 @@ fileprivate struct EventActionButtonsView: View {
     }
 }
 
+// NEW: Sub-events expanded view component
+struct SubEventsExpandedView: View {
+    let subEvents: [Event]
+    let isLoading: Bool
+    let error: String?
+    @Binding var programToRegister: EventProgram?
+    @Binding var showLoginSheet: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "calendar.badge.plus")
+                    .foregroundColor(.orange)
+                Text("Event Days")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            .padding(.bottom, 4)
+            
+            if isLoading {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Loading event days...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+            } else if let error = error {
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundColor(.red)
+                    .padding(.vertical, 20)
+            } else if subEvents.isEmpty {
+                // Don't show anything if no sub-events (this is a regular event)
+                EmptyView()
+            } else {
+                // Display each sub-event as a full event card
+                ForEach(subEvents) { subEvent in
+                    SubEventFullCard(
+                        subEvent: subEvent,
+                        programToRegister: $programToRegister,
+                        showLoginSheet: $showLoginSheet
+                    )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+    }
+}
+
+// NEW: Individual sub-event card (rendered exactly like main event)
+struct SubEventFullCard: View {
+    let subEvent: Event
+    @Binding var programToRegister: EventProgram?
+    @Binding var showLoginSheet: Bool
+    @StateObject private var programsViewModel = EventProgramsViewModel()
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Sub-event title and details
+            VStack(alignment: .leading, spacing: 8) {
+                Text(subEvent.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                
+                if let date = subEvent.date {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .foregroundColor(.orange)
+                        Text(date.formatted(date: .long, time: .omitted))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if let timeString = subEvent.timeString, !timeString.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .foregroundColor(.orange)
+                        Text(timeString)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if let location = subEvent.location {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundColor(.orange)
+                        Text(location)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            
+            // Sub-event description
+            if let plainDesc = subEvent.plainDescription, !plainDesc.isEmpty {
+                Text(plainDesc)
+                    .font(.body)
+                    .foregroundColor(.primary)
+            }
+            
+            // Sub-event programs (exactly like main event)
+            if programsViewModel.isLoading || !programsViewModel.programs.isEmpty {
+                CompetitionsCardView(
+                    viewModel: programsViewModel,
+                    programToRegister: $programToRegister,
+                    showLoginSheet: $showLoginSheet
+                )
+            }
+            
+            // Sub-event action buttons (exactly like main event)
+            EventActionButtonsView(event: subEvent, hasPrograms: !programsViewModel.programs.isEmpty)
+        }
+        .padding()
+        .background(Color(.tertiarySystemBackground))
+        .cornerRadius(8)
+        .task {
+            await programsViewModel.loadPrograms(for: subEvent.id)
+        }
+    }
+}
+
 struct EventDetailView: View {
     let event: Event
     
@@ -471,6 +599,11 @@ struct EventDetailView: View {
     @StateObject private var programsViewModel = EventProgramsViewModel()
     @State private var programToRegister: EventProgram?
     @State private var showLoginSheet = false
+    
+    // Sub-events properties
+    @State private var subEvents: [Event] = []
+    @State private var isLoadingSubEvents = false
+    @State private var subEventsError: String?
     
     init(event: Event) {
         self.event = event
@@ -516,12 +649,46 @@ struct EventDetailView: View {
                         DescriptionCardView(title: "Additional Details", content: htmlDesc, isHTML: true)
                     }
                     
-                    // Card 3: For Competitions and performances
-                    if programsViewModel.isLoading || !programsViewModel.programs.isEmpty {
-                        CompetitionsCardView(viewModel: programsViewModel, programToRegister: $programToRegister, showLoginSheet: $showLoginSheet)
+                    // NEW: Sub-events as full-width cards (no container card)
+                    if isLoadingSubEvents {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading event days...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
+                    } else if let error = subEventsError {
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundColor(.red)
+                            .padding(.vertical, 20)
+                    } else if !subEvents.isEmpty {
+                        // Display each sub-event as individual full-width cards
+                        ForEach(subEvents) { subEvent in
+                            SubEventFullWidthCard(
+                                subEvent: subEvent,
+                                programToRegister: $programToRegister,
+                                showLoginSheet: $showLoginSheet
+                            )
+                        }
                     }
                     
-                    EventActionButtonsView(event: event, hasPrograms: !programsViewModel.programs.isEmpty)
+                    // Card 3: For main event Competitions and performances (only if no sub-events)
+                    if subEvents.isEmpty && !isLoadingSubEvents && (programsViewModel.isLoading || !programsViewModel.programs.isEmpty) {
+                        CompetitionsCardView(
+                            viewModel: programsViewModel,
+                            programToRegister: $programToRegister,
+                            showLoginSheet: $showLoginSheet
+                        )
+                    }
+                    
+                    // Action buttons (only for events without sub-events)
+                    if subEvents.isEmpty && !isLoadingSubEvents {
+                        EventActionButtonsView(event: event, hasPrograms: !programsViewModel.programs.isEmpty)
+                    }
                 }
                 .padding()
                 .background(Color(.systemBackground))
@@ -551,17 +718,192 @@ struct EventDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .accentColor(.white)
         .onAppear {
-            Task { await programsViewModel.loadPrograms(for: event.id) }
+            Task {
+                await programsViewModel.loadPrograms(for: event.id)
+                await loadSubEvents()
+            }
         }
         .sheet(item: $programToRegister) { program in
             // This now gets triggered correctly after the login sheet is dismissed.
             ProgramRegistrationView(event: event, program: program)
         }
     }
-} // end of file
+    
+    // NEW: Load sub-events method
+    private func loadSubEvents() async {
+        isLoadingSubEvents = true
+        subEventsError = nil
+        
+        do {
+            let fetchedSubEvents = try await NetworkManager.shared.fetchSubEvents(forParentEventId: event.id)
+            await MainActor.run {
+                self.subEvents = fetchedSubEvents
+                self.isLoadingSubEvents = false
+                print("✅ [EventDetailView] Loaded \(fetchedSubEvents.count) sub-events for parent event \(event.id)")
+            }
+        } catch {
+            await MainActor.run {
+                // Only show error if we expected sub-events (you could add logic to check if parent has children)
+                if case NetworkError.serverError(let message) = error, !message.contains("404") {
+                    self.subEventsError = "Failed to load event days: \(error.localizedDescription)"
+                    print("❌ [EventDetailView] Error loading sub-events: \(error)")
+                }
+                self.isLoadingSubEvents = false
+            }
+        }
+    }
+}
 
-// NEW HELPER VIEW: Add this at the bottom of the file for the flowing category tags.
+// Sub-event card with image
+struct SubEventFullWidthCard: View {
+    let subEvent: Event
+    @Binding var programToRegister: EventProgram?
+    @Binding var showLoginSheet: Bool
+    
+    // Replace @StateObject with @State for direct control
+    @State private var programs: [EventProgram] = []
+    @State private var isLoadingPrograms = false
+    @State private var programsError: String?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Sub-event title
+            Text(subEvent.title)
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.primary)
+            
+            // Sub-event image (just like main event)
+            EventImageView(imageUrlString: subEvent.imageUrl)
+            
+            // Sub-event details card (similar to main event)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.orange)
+                    Text("Date & Time")
+                        .sectionTitleStyle()
+                }
+                
+                if let date = subEvent.date {
+                    let dateString = date.formatted(date: .long, time: .omitted)
+                    let timeToDisplay = subEvent.timeString ?? "Time To Be Announced"
+                    Text("\(dateString) • \(timeToDisplay)")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                } else {
+                    Text(subEvent.timeString ?? "Date & Time To be Announced")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                }
+                
+                Divider()
+                
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .foregroundColor(.orange)
+                    Text("Location")
+                        .sectionTitleStyle()
+                }
+                Text(subEvent.location ?? "To be Announced")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                if let location = subEvent.location,
+                   !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   location.lowercased() != "to be announced" {
+                    Button(action: {
+                        MapAppLauncher.presentMapOptions(for: location)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "location.fill")
+                            Text("View on Map")
+                        }
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(.orange)
+                    .buttonStyle(PlainButtonStyle())
+                    .tint(Color.orange)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+            
+            // Sub-event description
+            if let plainDesc = subEvent.plainDescription, !plainDesc.isEmpty {
+                DescriptionCardView(title: "About This Day", content: plainDesc, isHTML: false)
+            }
+            
+            if let htmlDesc = subEvent.htmlDescription, !htmlDesc.isEmpty {
+                DescriptionCardView(title: "Additional Details", content: htmlDesc, isHTML: true)
+            }
+            
+            // Sub-event programs - use direct state instead of ViewModel
+            if isLoadingPrograms || !programs.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flag.2.crossed.fill").foregroundColor(.orange)
+                        Text("Competitions & Performances").sectionTitleStyle()
+                    }
+                    .padding([.horizontal, .top]).padding(.bottom, 8)
+                    
+                    Divider().padding(.horizontal)
+                    
+                    if isLoadingPrograms && programs.isEmpty {
+                        ProgressView().frame(maxWidth: .infinity).padding()
+                    } else if !programs.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(programs) { program in
+                                VStack {
+                                    EventProgramRowView(program: program, programToRegister: $programToRegister, showLoginSheet: $showLoginSheet)
+                                    if program.id != programs.last?.id { Divider().padding(.horizontal) }
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    } else {
+                        Text("No specific programs listed for this event.")
+                            .font(.subheadline).foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center).padding()
+                    }
+                }
+                .background(Color(.secondarySystemBackground)).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+            }
+            
+            // Sub-event action buttons (exactly like main event)
+            EventActionButtonsView(event: subEvent, hasPrograms: !programs.isEmpty)
+        }
+        .task {
+            // Use direct NetworkManager call instead of EventProgramsViewModel
+            await loadPrograms()
+        }
+    }
+    
+    // Direct programs loading method
+    private func loadPrograms() async {
+        isLoadingPrograms = true
+        programsError = nil
+        
+        do {
+            let fetchedPrograms = try await NetworkManager.shared.fetchPrograms(forEventId: subEvent.id)
+            await MainActor.run {
+                self.programs = fetchedPrograms
+                self.isLoadingPrograms = false
+            }
+        } catch {
+            await MainActor.run {
+                self.programsError = error.localizedDescription
+                self.isLoadingPrograms = false
+            }
+        }
+    }
+}
 
+// NEW HELPER VIEW: WrappingHStack for the flowing category tags.
 struct WrappingHStack<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
     let id: KeyPath<Data.Element, Data.Element.ID>
     let data: Data

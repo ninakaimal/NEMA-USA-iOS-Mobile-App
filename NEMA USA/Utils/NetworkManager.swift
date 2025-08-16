@@ -1099,6 +1099,37 @@ final class NetworkManager: NSObject {
         }
     }
 
+    /// 1.1. Fetch sub-events for a specific parent event
+    func fetchSubEvents(forParentEventId parentEventId: String) async throws -> [Event] {
+        let url = eventsApiBaseURL.appendingPathComponent("events/\(parentEventId)/sub-events")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        
+        print("🚀 [NetworkManager] Fetching sub-events for parent event \(parentEventId)")
+        
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
+            throw NetworkError.serverError("Failed to fetch sub-events. Status: \(httpResponse.statusCode). \(errorBody)")
+        }
+        
+        do {
+            let fetchedSubEvents = try self.iso8601JSONDecoder.decode([Event].self, from: data)
+            print("✅ [NetworkManager] Successfully decoded \(fetchedSubEvents.count) sub-events.")
+            return fetchedSubEvents
+        } catch {
+            print("❌ [NetworkManager] fetchSubEvents: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+    
     // 2. Fetch Ticket Types for a specific event
     func fetchTicketTypes(forEventId eventId: String) async throws -> [EventTicketType] {
         // Ensure eventId is properly URL encoded if it could contain special characters, though IDs usually don't.
