@@ -339,9 +339,49 @@ struct EventRegistrationView: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 20)
             } else {
-                // Using explicit id: \.id, as EventTicketType is Identifiable
-                ForEach(viewModel.availableTicketTypes, id: \.id) { ticketType in
-                    
+                // 🔸 Filter ticket types based on membership (authoritative source)
+                let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
+                let visibleTicketTypes = viewModel.availableTicketTypes.filter { ticket in
+                    let mirror = Mirror(reflecting: ticket)
+                    var isExclusiveFlag: Bool?
+                    var typeName: String?
+
+                    for child in mirror.children {
+                        guard let label = child.label?.lowercased() else { continue }
+                        if (label == "is_ticket_type_member_exclusive" || label == "istickettypememberexclusive"),
+                           let val = child.value as? Bool {
+                            isExclusiveFlag = val
+                        }
+                        if (label == "type_name" || label == "typename" || label == "type"),
+                           let name = child.value as? String {
+                            typeName = name
+                        }
+                    }
+
+                    // Fallback inference from type name if backend flag is missing or incorrect
+                    let inferredExclusive: Bool = {
+                        guard var name = typeName?.lowercased() else { return false }
+                        name = name.replacingOccurrences(of: ":", with: "")
+                                   .replacingOccurrences(of: "  ", with: " ")
+                                   .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let hasMember = name.contains(" member")
+                            || name.hasSuffix("member")
+                            || name.hasPrefix("member")
+                            || name.contains("(member)")
+                        let hasNonMember = name.contains("non-member")
+                            || name.contains("non member")
+                            || name.contains("nonmember")
+                            || name.contains("nonmembers")
+                        return hasMember && !hasNonMember
+                    }()
+
+                    let isExclusive = (isExclusiveFlag ?? false) || inferredExclusive
+                    return isMember || !isExclusive
+                }
+
+                // 🔸 Render filtered list
+                ForEach(visibleTicketTypes, id: \.id) { ticketType in
+
                     // Calculate disabled state clearly before passing to the row view
                     let isMemberExclusiveForThisType = ticketType.isTicketTypeMemberExclusive ?? false
                     let isActiveMember = self.isUserLoggedInAndHasActiveMembership // Uses UserProfile.isMember
@@ -367,7 +407,7 @@ struct EventRegistrationView: View {
                     )
                     
                     // Add a divider unless it's the last item in the list
-                    if viewModel.availableTicketTypes.last?.id != ticketType.id {
+                    if visibleTicketTypes.last?.id != ticketType.id {
                         Divider()
                     }
                 }

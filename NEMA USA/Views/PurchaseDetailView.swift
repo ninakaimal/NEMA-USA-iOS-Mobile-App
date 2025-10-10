@@ -263,11 +263,43 @@ struct TicketDetailsSection: View {
                         CardHeader(title: "Tickets Purchased", icon: "ticket")
                         
                         VStack(spacing: 12) {
-                            ForEach(detail.purchase.details.indices, id: \.self) { index in
-                                let ticketDetail = detail.purchase.details[index]
-                                TicketRow(ticketDetail: ticketDetail)
+                            // Filter ticket types based on membership status
+                            let isMember = AccountViewHelper.isActiveMember()
+                            let visibleDetails = detail.purchase.details.filter {
+                                let mirror = Mirror(reflecting: $0.ticketType)
+                                var isExclusiveFlag: Bool?
+                                var typeName: String?
                                 
-                                if index < detail.purchase.details.count - 1 {
+                                for child in mirror.children {
+                                    guard let label = child.label?.lowercased() else { continue }
+                                    if (label == "is_ticket_type_member_exclusive" || label == "istickettypememberexclusive"),
+                                       let val = child.value as? Bool {
+                                        isExclusiveFlag = val
+                                    }
+                                    if (label == "type_name" || label == "typename" || label == "type"),
+                                       let name = child.value as? String {
+                                        typeName = name
+                                    }
+                                }
+
+                                // Fallback inference from the type name if the flag is missing/incorrect
+                                let inferredExclusive: Bool = {
+                                    guard let name = typeName?.lowercased() else { return false }
+                                    let hasMember = name.contains("member")
+                                    let hasNonMember = name.contains("non-member") || name.contains("non member") || name.contains("nonmember")
+                                    return hasMember && !hasNonMember
+                                }()
+
+                                // Final decision: explicit flag wins if true; otherwise use inference
+                                let isExclusive = (isExclusiveFlag ?? false) || inferredExclusive
+
+                                return isMember || !isExclusive
+                            }
+                            
+                            ForEach(visibleDetails.indices, id: \.self) { index in
+                                let ticketDetail = visibleDetails[index]
+                                TicketRow(ticketDetail: ticketDetail)
+                                if index < visibleDetails.count - 1 {
                                     DividerLine()
                                 }
                             }
@@ -634,5 +666,20 @@ struct ErrorStateView: View {
     
     NavigationView {
         PurchaseDetailView(record: sampleRecord)
+    }
+}
+// MARK: - Helper to check membership quickly (cached via AccountView)
+struct AccountViewHelper {
+    static func isActiveMember() -> Bool {
+        if let expiryRaw = UserDefaults.standard.string(forKey: "membershipExpiryDate") {
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyy-MM-dd"
+            if let exp = df.date(from: expiryRaw) {
+                let today = Calendar.current.startOfDay(for: Date())
+                return exp >= today
+            }
+        }
+        return false
     }
 }

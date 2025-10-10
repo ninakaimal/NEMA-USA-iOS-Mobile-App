@@ -574,17 +574,34 @@ struct AccountView: View {
                 }
                 
                 if !isEditingProfile {
-                    InfoRow(
-                        label: "Membership Expires",
-                        value: profileData.isMember ? (profileData.membershipExpiryDate.map(formatDate) ?? "Active") : "Not a member"
-                    )
+                    // Show membership expiry info based on state
+                    if let membershipIdValue = self.membershipId {
+                        // Has a membership record (active or expired)
+                        InfoRow(
+                            label: "Membership Expires",
+                            value: profileData.isMember ? (profileData.membershipExpiryDate.map(formatDate) ?? "Active") : "Not a member"
+                        )
+                    }  else {
+                        // Never had a membership
+                        InfoRow(
+                            label: "Membership Status",
+                            value: "Not a member"
+                        )
+                    }
                 }
                 
+                // Message text based on membership state
                 if profileData.isMember, let expiryRaw = profileData.membershipExpiryDate {
+                    // Active membership
                     Text("Your membership is active until \(formatDate(expiryRaw)).")
                         .font(.footnote).foregroundColor(.green)
+                } else if self.membershipId != nil, let expiryRaw = profileData.membershipExpiryDate {
+                    // Expired membership
+                    Text("Your membership expired on \(formatDate(expiryRaw)). Renew to continue enjoying benefits!")
+                        .font(.footnote).foregroundColor(.orange)
                 } else {
-                    Text("Become a NEMA member or renew to enjoy benefits!")
+                    // Never had membership
+                    Text("Become a NEMA member to enjoy benefits!")
                         .font(.subheadline).foregroundColor(.orange)
                 }
                 
@@ -614,12 +631,13 @@ struct AccountView: View {
                             // This is the 'item' name for PayPal, specific to membership
                             let itemTitleForMembership = "NEMA Membership - \(pkg.years_of_validity) Year"
                             
-                            // Determine the type: "renew" or "new_member" (or "membership" if your backend handles that as new)
-                            let effectiveMembershipType = profileData.isMember ? "renew" : "new_member"
+                            // Determine the type: "renew" if membership record exists (even if expired), otherwise "new_member"
+                            // Check membershipId state which is set by loadMembership() when a record exists
+                            let effectiveMembershipType = (self.membershipId != nil) ? "renew" : "new_member"
                             self.currentActionIsRenewal = (effectiveMembershipType == "renew") // Set the flag
                             self.paymentDataFromPayPal = nil // Reset any previous data
-                            
-                            print("[AccountView] MEMBER_ACTION_TRACE: Type: \(effectiveMembershipType), Profile ID: \(profileData.id), Pkg ID: \(pkg.id)")
+
+                            print("[AccountView] MEMBER_ACTION_TRACE: Type: \(effectiveMembershipType), Profile ID: \(profileData.id), Pkg ID: \(pkg.id), MembershipId: \(self.membershipId ?? 0)")
                             
                             // Call PaymentManager with the parameter names defined in YOUR PaymentManager.swift
                             PaymentManager.shared.createOrder(
@@ -657,7 +675,7 @@ struct AccountView: View {
                                     Text("Processing...")
                                 }
                             } else {
-                                Text(profileData.isMember ? "Renew Membership" : "Become a Member")
+                                Text(self.membershipId != nil ? "Renew Membership" : "Become a Member")
                             }
                         }
                         .font(.subheadline)

@@ -409,6 +409,8 @@ fileprivate struct DescriptionCardView: View {
 fileprivate struct EventActionButtonsView: View {
     let event: Event // Needed for isRegON, eventLink and for NavigationLink destination
     let hasPrograms: Bool
+    @Binding var showLoginSheet: Bool
+    @Binding var pendingPurchaseAfterLogin: Bool
     
     var body: some View {
         //let _ = print("DEBUG: Checking button for event '\(event.title)'. showBuyTickets=\(event.showBuyTickets ?? false), isTktON=\(event.isTktON ?? false)")
@@ -420,10 +422,32 @@ fileprivate struct EventActionButtonsView: View {
                     let buttonColor = (event.isRegWaitlist == true) ? Color.orange : Color.orange
 
                     // Case 1A: Ticketing is ON or on Waitlist. Show the appropriate button.
-                    NavigationLink(destination: EventRegistrationView(event: event)) {
-                        Text(buttonText)
-                            .font(.headline).fontWeight(.semibold).frame(maxWidth: .infinity).padding()
-                            .background(Color.orange).foregroundColor(.white).cornerRadius(10)
+                    // Force login before allowing ticket purchase
+                    if DatabaseManager.shared.jwtApiToken == nil {
+                        Button(action: {
+                            pendingPurchaseAfterLogin = true
+                            showLoginSheet = true
+                        }) {
+                            Text("Login to Purchase Tickets")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                    } else {
+                        NavigationLink(destination: EventRegistrationView(event: event)) {
+                            Text(buttonText)
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
                     }
                 } else {
                     // Case 1B: Ticketing is OFF. Show the "Ticketing Closed" button.
@@ -467,6 +491,7 @@ struct SubEventsExpandedView: View {
     let error: String?
     @Binding var programToRegister: EventProgram?
     @Binding var showLoginSheet: Bool
+    @Binding var pendingPurchaseAfterLogin: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -504,7 +529,8 @@ struct SubEventsExpandedView: View {
                     SubEventFullCard(
                         subEvent: subEvent,
                         programToRegister: $programToRegister,
-                        showLoginSheet: $showLoginSheet
+                        showLoginSheet: $showLoginSheet,
+                        pendingPurchaseAfterLogin: $pendingPurchaseAfterLogin
                     )
                 }
             }
@@ -522,6 +548,7 @@ struct SubEventFullCard: View {
     let subEvent: Event
     @Binding var programToRegister: EventProgram?
     @Binding var showLoginSheet: Bool
+    @Binding var pendingPurchaseAfterLogin: Bool
     @StateObject private var programsViewModel = EventProgramsViewModel()
     
     var body: some View {
@@ -581,7 +608,12 @@ struct SubEventFullCard: View {
             }
             
             // Sub-event action buttons (exactly like main event)
-            EventActionButtonsView(event: subEvent, hasPrograms: !programsViewModel.programs.isEmpty)
+            EventActionButtonsView(
+                event: subEvent,
+                hasPrograms: !programsViewModel.programs.isEmpty,
+                showLoginSheet: $showLoginSheet,
+                pendingPurchaseAfterLogin: $pendingPurchaseAfterLogin
+            )
         }
         .padding()
         .background(Color(.tertiarySystemBackground))
@@ -599,6 +631,8 @@ struct EventDetailView: View {
     @StateObject private var programsViewModel = EventProgramsViewModel()
     @State private var programToRegister: EventProgram?
     @State private var showLoginSheet = false
+    @State private var navigateToPurchase = false    // controls the hidden NavigationLink
+    @State private var pendingPurchaseAfterLogin = false // remember why we opened Login
     
     // Sub-events properties
     @State private var subEvents: [Event] = []
@@ -671,9 +705,9 @@ struct EventDetailView: View {
                             SubEventFullWidthCard(
                                 subEvent: subEvent,
                                 programToRegister: $programToRegister,
-                                showLoginSheet: $showLoginSheet
-                            )
-                        }
+                                showLoginSheet: $showLoginSheet,
+                                pendingPurchaseAfterLogin: $pendingPurchaseAfterLogin
+                            )                        }
                     }
                     
                     // Card 3: For main event Competitions and performances (only if no sub-events)
@@ -685,9 +719,21 @@ struct EventDetailView: View {
                         )
                     }
                     
+                    // Hidden NavigationLink that triggers programmatically after login
+                    NavigationLink(
+                        destination: EventRegistrationView(event: event),
+                        isActive: $navigateToPurchase
+                    ) { EmptyView() }
+                    .hidden()
+                    
                     // Action buttons (only for events without sub-events)
                     if subEvents.isEmpty && !isLoadingSubEvents {
-                        EventActionButtonsView(event: event, hasPrograms: !programsViewModel.programs.isEmpty)
+                        EventActionButtonsView(
+                            event: event,
+                            hasPrograms: !programsViewModel.programs.isEmpty,
+                            showLoginSheet: $showLoginSheet,
+                            pendingPurchaseAfterLogin: $pendingPurchaseAfterLogin
+                        )
                     }
                 }
                 .padding()
@@ -696,12 +742,20 @@ struct EventDetailView: View {
         }
         
         .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
-            // After login, if programToRegister is not nil, it means the user was trying to register.
-            // We set showLoginSheet to false and keep programToRegister set,
-            // which will automatically trigger the .sheet(item:...) modifier.
+            // 1) Existing: program registration flow
             if self.programToRegister != nil {
                 print("Login successful, proceeding with registration flow.")
-                self.showLoginSheet = false // Dismiss the login sheet
+                self.showLoginSheet = false // Dismiss the login sheet; the .sheet(item:) will present the registration UI
+            }
+
+            // 2) New: ticket purchase flow
+            if pendingPurchaseAfterLogin {
+                pendingPurchaseAfterLogin = false
+                showLoginSheet = false
+                // Give the sheet a moment to dismiss before navigating
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    navigateToPurchase = true
+                }
             }
         }
         .sheet(isPresented: $showLoginSheet, onDismiss: {
@@ -759,6 +813,7 @@ struct SubEventFullWidthCard: View {
     let subEvent: Event
     @Binding var programToRegister: EventProgram?
     @Binding var showLoginSheet: Bool
+    @Binding var pendingPurchaseAfterLogin: Bool
     
     // Replace @StateObject with @State for direct control
     @State private var programs: [EventProgram] = []
@@ -875,7 +930,12 @@ struct SubEventFullWidthCard: View {
             }
             
             // Sub-event action buttons (exactly like main event)
-            EventActionButtonsView(event: subEvent, hasPrograms: !programs.isEmpty)
+            EventActionButtonsView(
+                event: subEvent,
+                hasPrograms: !programs.isEmpty,
+                showLoginSheet: $showLoginSheet,
+                pendingPurchaseAfterLogin: $pendingPurchaseAfterLogin
+            )
         }
         .task {
             // Use direct NetworkManager call instead of EventProgramsViewModel
