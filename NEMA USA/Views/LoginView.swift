@@ -15,6 +15,7 @@ extension Notification.Name {
     static let didSessionExpire = Notification.Name("didSessionExpire")
     static let didUpdateBiometricSettings = Notification.Name("didUpdateBiometricSettings")
     static let didUserLogout = Notification.Name("didUserLogout")
+    static let didUpdateMembership = Notification.Name("didUpdateMembership")
 }
 
 struct LoginView: View {
@@ -199,6 +200,11 @@ struct LoginView: View {
         }
         .navigationViewStyle(StackNavigationViewStyle())
         .onAppear {
+            // Already authenticated? Close immediately to avoid a second biometric prompt.
+            if DatabaseManager.shared.jwtApiToken != nil {
+                presentationMode.wrappedValue.dismiss()
+                return
+            }
             // Check biometric availability
             checkBiometricAvailability()
             refreshBiometricState()
@@ -216,6 +222,7 @@ struct LoginView: View {
                 justLoggedOut = false
             }
         }
+        
         .alert(isPresented: $showAlert) {
             Alert(
                 title:   Text(alertTitle),
@@ -237,7 +244,8 @@ struct LoginView: View {
             Text("Use \(biometricType.displayName) to quickly and securely log into your NEMA account.")
         }
         .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                presentationMode.wrappedValue.dismiss()
                 refreshBiometricState()
             }
         }
@@ -372,17 +380,13 @@ struct LoginView: View {
                             case let .success((jwt, _)):
                                 print("🔐 [LoginView] got JWT")
                                 DatabaseManager.shared.saveJwtApiToken(jwt)
-                                NotificationCenter.default.post(name: .didReceiveJWT, object: nil)
-                                
+ 
                                 // Store the token
                                 self.authToken = laravelToken
                                 
                                 // FIXED: Save credentials BEFORE posting JWT notification
                                 self.saveCredentialsIfNeeded()
-                                
-                                // REMOVED: All biometric setup logic - let the main app handle it via JWT notification
-                                // Just dismiss the login view
-                                self.presentationMode.wrappedValue.dismiss()
+                                NotificationCenter.default.post(name: .didReceiveJWT, object: nil)
                                 
                             case let .failure(err):
                                 self.alertTitle = "Login Failed"

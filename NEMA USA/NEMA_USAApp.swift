@@ -145,7 +145,7 @@ struct NEMA_USAApp: App {
             // Listen for successful JWT login
             .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
                 // Check for biometric setup after successful login
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
                     checkForBiometricSetup()
                 }
             }

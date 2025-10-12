@@ -96,6 +96,7 @@ struct CalendarView: View {
                     }
                 }
                 .pickerStyle(MenuPickerStyle())
+                .frame(maxWidth: 150)
 
                 Picker("Year", selection: $displayedYear) {
                     ForEach(2023...2026, id: \.self) { y in
@@ -103,6 +104,7 @@ struct CalendarView: View {
                     }
                 }
                 .pickerStyle(MenuPickerStyle())
+                .frame(maxWidth: 80) // ✅ narrow year picker to keep single-line layout
                 .environment(\.locale, Locale(identifier: "en_US_POSIX"))
 
                 Button(action: goToNextMonth) {

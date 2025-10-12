@@ -638,34 +638,49 @@ struct AccountView: View {
                             self.paymentDataFromPayPal = nil // Reset any previous data
 
                             print("[AccountView] MEMBER_ACTION_TRACE: Type: \(effectiveMembershipType), Profile ID: \(profileData.id), Pkg ID: \(pkg.id), MembershipId: \(self.membershipId ?? 0)")
-                            
+
+                            // ✅ PRE-FLIGHT JWT: ensure server still recognizes our JWT before opening PayPal
                             // Call PaymentManager with the parameter names defined in YOUR PaymentManager.swift
-                            PaymentManager.shared.createOrder(
-                                amount: "\(Int(pkg.amount))",
-                                eventTitle: itemTitleForMembership,  // Use 'eventTitle' as per your PaymentManager.swift
-                                eventID: nil,                         // No eventID for membership
-                                email: profileData.email,
-                                name: profileData.name,
-                                phone: profileData.phone,
-                                membershipType: effectiveMembershipType, // Use 'membershipType' as per your PaymentManager.swift
-                                packageId: pkg.id,
-                                packageYears: pkg.years_of_validity,
-                                userId: profileData.id,               // This is users.id
-                                panthiId: nil,                        // No panthiId for membership
-                                //  lineItems: nil, // Not passing lineItems for membership
-                                completion: { result in
-                                    DispatchQueue.main.async {
-                                        self.isProcessingMembershipAction = false
-                                        switch result {
-                                        case .success(let url):
-                                            self.approvalURL = url
-                                        case .failure(let err):
-                                            self.isProcessingMembershipAction = false // Explicitly reset on direct failure
-                                            self.handlePaymentManagerError(err, context: "membership payment")
+                            NetworkManager.shared.fetchProfileJSON { preflight in
+                                switch preflight {
+                                case .success:
+                                    // Still authenticated → proceed with your existing PaymentManager call
+                                    PaymentManager.shared.createOrder(
+                                        amount: "\(Int(pkg.amount))",
+                                        eventTitle: itemTitleForMembership,  // Use 'eventTitle' as per your PaymentManager.swift
+                                        eventID: nil,                         // No eventID for membership
+                                        email: profileData.email,
+                                        name: profileData.name,
+                                        phone: profileData.phone,
+                                        membershipType: effectiveMembershipType, // Use 'membershipType' as per your PaymentManager.swift
+                                        packageId: pkg.id,
+                                        packageYears: pkg.years_of_validity,
+                                        userId: profileData.id,               // This is users.id
+                                        panthiId: nil,                        // No panthiId for membership
+                                        //  lineItems: nil, // Not passing lineItems for membership
+                                    ) { result in
+                                        DispatchQueue.main.async {
+                                            self.isProcessingMembershipAction = false
+                                            switch result {
+                                            case .success(let url):
+                                                self.approvalURL = url
+                                            case .failure(let err):
+                                                self.isProcessingMembershipAction = false
+                                                self.handlePaymentManagerError(err, context: "membership payment")
+                                            }
                                         }
                                     }
+
+                                case .failure:
+                                    // ❌ Session expired → force login and stop flow
+                                    self.isProcessingMembershipAction = false
+                                    self.paymentErrorMessage = "Your session expired. Please log in to continue."
+                                    self.showPaymentError = true
+                                    // Use your existing session-expiry broadcast so UI navigates to LoginView
+                                    NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                                    return
                                 }
-                            )
+                            }
                         }) {
                             
                             if isProcessingMembershipAction {
@@ -1330,6 +1345,9 @@ struct AccountView: View {
                         self.profile = p // Update @State to trigger UI
                         DatabaseManager.shared.saveUser(p) // Persist the updated profile
                         print("✅ [AccountView.loadMembership] Updated self.profile.membershipExpiryDate with server value: \(serverExpiryDate ?? "nil")")
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(name: .didUpdateMembership, object: nil)
+                        }
                     }
                 }
             }

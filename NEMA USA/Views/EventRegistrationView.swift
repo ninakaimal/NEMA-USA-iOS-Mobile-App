@@ -40,6 +40,7 @@ struct EventRegistrationView: View {
     @State private var approvalURL: URL?        = nil
     @State private var showPaymentError    = false
     @State private var paymentErrorMessage = ""
+    @State private var awaitingMembership = false
     
     @State private var dummyPaymentConfirmationForPayPalView: PaymentConfirmationResponse? = nil
     
@@ -73,100 +74,75 @@ struct EventRegistrationView: View {
     
     var body: some View {
         content
-            .navigationTitle(event.isRegWaitlist == true ? "\(event.title) Waitlist" : "\(event.title) Tickets") // Set title here
+            .navigationTitle(event.isRegWaitlist == true ? "\(event.title) Waitlist" : "\(event.title) Tickets")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showLoginSheet, onDismiss: {
-                loadMemberInfo()
-                let refreshDelay = attemptedLoginForMemberPrice ? 0.5 : 0.25 // Slightly longer if member price was the goal
-                DispatchQueue.main.asyncAfter(deadline: .now() + refreshDelay) {
-                    self.loadMemberInfo()
-                    self.viewModel.objectWillChange.send()
-                }
-
-                // This block seems fine, assuming userInitiatedLogin is correctly declared as @State
-                if userInitiatedLogin {
-                    // viewModel.objectWillChange.send() was called above, UI should update.
-                    userInitiatedLogin = false
-                }
-
-                if pendingPurchase {
-                    if DatabaseManager.shared.jwtApiToken != nil {
-                        validateAndShowPurchaseConfirmation()
-                    } else {
-                        pendingPurchase = false
-                    }
-                }
-                attemptedLoginForMemberPrice = false
-            }) {
-                LoginView() // Make sure LoginView updates DatabaseManager.shared states
+            .modifier(SheetAndAlertModifiers(
+                showLoginSheet: $showLoginSheet,
+                showPurchaseConfirmation: $showPurchaseConfirmation,
+                showPaymentError: $showPaymentError,
+                showPurchaseSuccess: $showPurchaseSuccess,
+                approvalURL: $approvalURL,
+                paymentErrorMessage: $paymentErrorMessage,
+                isProcessingPayment: $isProcessingPayment,
+                event: event,
+                memberNameText: memberNameText,
+                emailAddressText: emailAddressText,
+                viewModel: viewModel,
+                dummyPaymentConfirmationForPayPalView: $dummyPaymentConfirmationForPayPalView,
+                onLoginDismiss: handleLoginDismiss,
+                onPurchaseConfirm: handlePurchaseConfirm,
+                onPurchaseDismiss: handlePurchaseDismiss,
+                handlePayPalRedirect: handlePayPalRedirect
+            ))
+            .modifier(LifecycleModifiers(
+                loadMemberInfo: loadMemberInfo,
+                refreshMembershipAfterJWT: refreshMembershipAfterJWT,
+                viewModel: viewModel,
+                awaitingMembership: $awaitingMembership,
+                event: event
+            ))
+        // 🚪 Auto-exit the registration screen if the user logs out or session expires
+        .onReceive(NotificationCenter.default.publisher(for: .didUserLogout)) { _ in
+            presentationMode.wrappedValue.dismiss()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .didSessionExpire)) { _ in
+            presentationMode.wrappedValue.dismiss()
+        }
+    }
+    
+    private func handleLoginDismiss() {
+        loadMemberInfo()
+        let refreshDelay = attemptedLoginForMemberPrice ? 0.5 : 0.25
+        DispatchQueue.main.asyncAfter(deadline: .now() + refreshDelay) {
+            self.loadMemberInfo()
+            self.viewModel.objectWillChange.send()
+        }
+        if userInitiatedLogin {
+            userInitiatedLogin = false
+        }
+        if pendingPurchase {
+            if DatabaseManager.shared.jwtApiToken != nil {
+                validateAndShowPurchaseConfirmation()
+            } else {
+                pendingPurchase = false
             }
-            .alert(
-                "Confirm \(event.isRegWaitlist == true ? "Join Waitlist" : "Purchase")",
-                isPresented: $showPurchaseConfirmation
-            ) {
-                Button("Cancel", role: .cancel) { }
-                Button("Confirm") {
-                    isProcessingPayment = true
-                    initiateMobilePayment()
-                }
-            } message: {
-                Text(viewModel.purchaseSummary)
-            }
-        
-        // MARK: – Show payment errors
-            .alert(
-                "Payment Information", // Changed title for clarity
-                isPresented: $showPaymentError
-            ) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(paymentErrorMessage)
-            }
-            .alert(
-                "Success!", // Updated title
-                isPresented: $showPurchaseSuccess
-            ) {Button("OK") { presentationMode.wrappedValue.dismiss() }
-            } message: {
-                if event.isRegWaitlist == true {
-                    Text("You have been added to the waitlist for \(event.title). Check your email \(emailAddressText) for confirmation.")
-                } else {
-                    Text("Purchase successful! Check your email \(emailAddressText) for confirmation.")
-                }
-            }
-        
-        // MARK: – PayPal approval sheet
-            .sheet(item: $approvalURL) { url in
-                PayPalView(
-                    approvalURL:        url,
-                    showPaymentError:   $showPaymentError,
-                    paymentErrorMessage:$paymentErrorMessage,
-                    showPurchaseSuccess:$showPurchaseSuccess,
-                    paymentConfirmationData: $dummyPaymentConfirmationForPayPalView,
-                    comments:           "\(event.title) Tickets for \(memberNameText)", // More context
-                    successMessage:     "Your tickets have been purchased successfully!"
-                )
-            }
-            .onOpenURL { url in // PayPal redirect handling
-                handlePayPalRedirect(url: url)
-            }
-            .task { // Use .task for async work on appear
-                await viewModel.loadPrerequisites(for: event)
-                loadMemberInfo() // Load/pre-fill user info once
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                DispatchQueue.main.async {
-                    loadMemberInfo()
-                    viewModel.objectWillChange.send()
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
-                DispatchQueue.main.async {
-                    loadMemberInfo()
-                    viewModel.objectWillChange.send()
-                    print("✅ [EventRegView] Refreshed after JWT received")
-                }
+        }
+        attemptedLoginForMemberPrice = false
+        if DatabaseManager.shared.jwtApiToken == nil {
+                presentationMode.wrappedValue.dismiss()
             }
     }
+
+    private func handlePurchaseConfirm() {
+        isProcessingPayment = true
+        initiateMobilePayment()
+    }
+
+    private func handlePurchaseDismiss() {
+        presentationMode.wrappedValue.dismiss()
+    }
+    
+    
     
     private var content: some View {
         ZStack(alignment: .top) {
@@ -227,10 +203,26 @@ struct EventRegistrationView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else if let user = DatabaseManager.shared.currentUser {
-                     Text(user.isMember ? "Member prices are automatically applied" : "Not a NEMA member, non-member prices apply. Tap the Account icon below for membership options.")
-                        .font(.caption)
-                        .foregroundColor(user.isMember ? .green : .orange)
-                        .padding(.top, 5)
+                    if awaitingMembership && !user.isMember {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Checking membership…")
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    } else if user.isMember {
+                        Text("Member prices are automatically applied.")
+                            .font(.callout)
+                            .foregroundColor(.green)
+                    } else {
+                        Text("Membership expired or not a NEMA member, non-member prices apply. Tap the Account menu below for membership options.")
+                            .font(.callout)
+                            .foregroundColor(.orange)
+                    }
                 }
             }
         }
@@ -451,6 +443,7 @@ struct EventRegistrationView: View {
         .padding(.horizontal)
     }
     
+    @ViewBuilder
     private var purchaseButton: some View {
         if event.isRegON ?? false {
             let isWaitlist = event.isRegWaitlist == true
@@ -460,33 +453,31 @@ struct EventRegistrationView: View {
                 eventUsesPanthi: event.usesPanthi ?? false,
                 availablePanthisNonEmpty: !memberNameText.isEmpty && !emailAddressText.isEmpty && !phoneText.isEmpty && emailAddressText.isValidEmail
             )
-        return AnyView(
+            
             Button(action: {
                 validateAndShowPurchaseConfirmation()
-        }) {
-            // The content of the button changes based on 'isProcessingPayment'
-            if isProcessingPayment {
-                HStack {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white)) // Style for white spinner
-                        .padding(.trailing, 5) // Optional spacing
-                    Text("Processing...")
+            }) {
+                // The content of the button changes based on 'isProcessingPayment'
+                if isProcessingPayment {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white)) // Style for white spinner
+                            .padding(.trailing, 5) // Optional spacing
+                        Text("Processing...")
+                    }
+                } else {
+                    Text(buttonText)
                 }
-            } else {
-                Text(buttonText)
             }
-        }
-        .disabled(!canProceed)
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(canProceed ? Color.orange : Color.gray)
-        .foregroundColor(.white)
-        .cornerRadius(10)
-        .padding(.horizontal)
-    )
-    }   else {
-        // --- If Registration is OFF, show a disabled "Tickets Closed" button ---
-        return AnyView(
+            .disabled(!canProceed)
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(canProceed ? Color.orange : Color.gray)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+            .padding(.horizontal)
+        } else {
+            // --- If Registration is OFF, show a disabled "Tickets Closed" button ---
             Text("Ticketing Closed")
                 .font(.headline)
                 .fontWeight(.bold)
@@ -496,9 +487,8 @@ struct EventRegistrationView: View {
                 .background(Color.gray) // Use a distinct disabled color
                 .cornerRadius(10)
                 .padding(.horizontal)
-        )
+        }
     }
-}
     
     private func loadMemberInfo() {
         if let user = DatabaseManager.shared.currentUser { //
@@ -517,6 +507,35 @@ struct EventRegistrationView: View {
               "Name:", memberNameText,
               "Email:", emailAddressText,
               "Phone:", phoneText)
+    }
+    private func refreshMembershipAfterJWT() {
+        // Only attempt if we have a user and a JWT
+        guard DatabaseManager.shared.jwtApiToken != nil,
+              var current = DatabaseManager.shared.currentUser else {
+            return
+        }
+
+        NetworkManager.shared.fetchMembership { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let membership):
+                    // Only apply if it belongs to the same user
+                    if membership.user_id == current.id {
+                        let previousExpiry = current.membershipExpiryDate
+                        // Update expiry on the in-memory user and persist
+                        current.membershipExpiryDate = membership.exp_date
+                        DatabaseManager.shared.saveUser(current)
+                        // Tell interested views (this one included) to re-read user
+                        if previousExpiry != membership.exp_date {
+                            NotificationCenter.default.post(name: .didUpdateMembership, object: nil)
+                        }
+                    }
+                case .failure:
+                    // No-op: if user has no membership (404), just leave things as-is
+                    break
+                }
+            }
+        }
     }
     private func validateAndShowPurchaseConfirmation() {
         // Validate user-entered info first - this is for guest or logged-in user
@@ -719,6 +738,119 @@ struct EventRegistrationView: View {
                 }
             } // End of trailing closure
         ) // End of captureOrder call
+    }
+    
+    // MARK: - View Modifiers
+    private struct SheetAndAlertModifiers: ViewModifier {
+        @Binding var showLoginSheet: Bool
+        @Binding var showPurchaseConfirmation: Bool
+        @Binding var showPaymentError: Bool
+        @Binding var showPurchaseSuccess: Bool
+        @Binding var approvalURL: URL?
+        @Binding var paymentErrorMessage: String
+        @Binding var isProcessingPayment: Bool
+        
+        let event: Event
+        
+        let memberNameText: String
+        let emailAddressText: String
+        let viewModel: EventRegistrationViewModel
+        @Binding var dummyPaymentConfirmationForPayPalView: PaymentConfirmationResponse?
+        
+        let onLoginDismiss: () -> Void
+        let onPurchaseConfirm: () -> Void
+        let onPurchaseDismiss: () -> Void
+        let handlePayPalRedirect: (URL) -> Void
+        
+        func body(content: Content) -> some View {
+            content
+                .sheet(isPresented: $showLoginSheet, onDismiss: onLoginDismiss) {
+                    LoginView()
+                }
+                .alert(
+                    "Confirm \(event.isRegWaitlist == true ? "Join Waitlist" : "Purchase")",
+                    isPresented: $showPurchaseConfirmation
+                ) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Confirm", action: onPurchaseConfirm)
+                } message: {
+                    Text(viewModel.purchaseSummary)
+                }
+                .alert(
+                    "Payment Information",
+                    isPresented: $showPaymentError
+                ) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text(paymentErrorMessage)
+                }
+                .alert(
+                    "Success!",
+                    isPresented: $showPurchaseSuccess
+                ) {
+                    Button("OK", action: onPurchaseDismiss)
+                } message: {
+                    if event.isRegWaitlist == true {
+                        Text("You have been added to the waitlist for \(event.title). Check your email \(emailAddressText) for confirmation.")
+                    } else {
+                        Text("Purchase successful! Check your email \(emailAddressText) for confirmation.")
+                    }
+                }
+                .sheet(item: $approvalURL) { url in
+                    PayPalView(
+                        approvalURL: url,
+                        showPaymentError: $showPaymentError,
+                        paymentErrorMessage: $paymentErrorMessage,
+                        showPurchaseSuccess: $showPurchaseSuccess,
+                        paymentConfirmationData: $dummyPaymentConfirmationForPayPalView,
+                        comments: "\(event.title) Tickets for \(memberNameText)",
+                        successMessage: "Your tickets have been purchased successfully!"
+                    )
+                }
+                .onOpenURL { url in
+                    handlePayPalRedirect(url)
+                }
+        }
+    }
+
+    private struct LifecycleModifiers: ViewModifier {
+        let loadMemberInfo: () -> Void
+        let refreshMembershipAfterJWT: () -> Void
+        let viewModel: EventRegistrationViewModel
+        @Binding var awaitingMembership: Bool
+        let event: Event
+        
+        func body(content: Content) -> some View {
+            content
+                .task {
+                    await viewModel.loadPrerequisites(for: event)
+                    loadMemberInfo()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    DispatchQueue.main.async {
+                        loadMemberInfo()
+                        viewModel.objectWillChange.send()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
+                    DispatchQueue.main.async {
+                        loadMemberInfo()
+                        awaitingMembership = true
+                        viewModel.objectWillChange.send()
+                        print("✅ [EventRegView] Refreshed after JWT received")
+                        refreshMembershipAfterJWT()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .didUpdateMembership)) { _ in
+                    DispatchQueue.main.async {
+                        loadMemberInfo()
+                        awaitingMembership = false
+                        viewModel.objectWillChange.send()
+                        print("✅ [EventRegView] Membership update received; refreshing ticket types")
+                        refreshMembershipAfterJWT()
+                    }
+                }
+        }
     }
 }
     // Helper for email validation (should be in a common utility file ideally)
