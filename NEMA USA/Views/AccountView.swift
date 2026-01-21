@@ -237,6 +237,11 @@ struct AccountView: View {
             Button("OK", role: .cancel, action: handlePaymentSuccess)
         }
         .onAppear {
+            // Check JWT token before attempting to load data
+            guard DatabaseManager.shared.jwtApiToken != nil else {
+                print("ℹ️ [AccountView] No JWT token on appear, showing login")
+                return
+            }
             self.loadAllData()
             if membershipOptions.isEmpty { // Ensure a default selection if options load later
                 fetchPackages()
@@ -265,6 +270,11 @@ struct AccountView: View {
         // MARK: – Handle session expiration
         .onReceive(NotificationCenter.default.publisher(for: .didSessionExpire)) { _ in
             authToken = nil // Triggers LoginView via contentView
+            profile = nil
+            family = []
+            membershipId = nil
+            cachedExpiryRaw = nil
+            userId = 0
         }
     }
     
@@ -1272,10 +1282,17 @@ struct AccountView: View {
     
     private func loadAllData() {
         print("🔄 [AccountView] loadAllData called.")
+
+        // Check JWT token before making any network calls
+        guard DatabaseManager.shared.jwtApiToken != nil else {
+            print("ℹ️ [AccountView] Cannot load data without JWT token")
+            return
+        }
+
         if self.profile == nil { // Only load from cache if profile isn't already set (e.g. from a previous load)
             loadLocalProfile()
         }
-        
+
         loadRemoteProfile()  // This calls loadMembership internally on success
         loadFamily()
         fetchPackages()  // Fetch available membership packages
