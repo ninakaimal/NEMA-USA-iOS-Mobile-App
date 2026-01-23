@@ -18,4 +18,11 @@ Carthage/Build/
 .build/
 Packages/
 
+# OS-generated files
+.DS_Store
+
+# Claude AI specific files
+CLAUDE.md
+
+
 .env
