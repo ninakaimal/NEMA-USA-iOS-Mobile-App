@@ -1624,6 +1624,124 @@ final class NetworkManager: NSObject {
         print("✅ [NetworkManager] Successfully submitted registration for program \(programId).")
     }
 
+    func withdrawProgramRegistration(participantId: Int) async throws -> WithdrawResponse {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+
+        let url = baseURL.appendingPathComponent("v1/mobile/my-events/program/\(participantId)/withdraw")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        print("🚀 [NetworkManager] Withdrawing program registration ID: \(participantId)")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+
+        print("📡 [NetworkManager] withdrawProgramRegistration: HTTP Status \(httpResponse.statusCode)")
+
+        if httpResponse.statusCode == 401 {
+            DatabaseManager.shared.clearSession()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            }
+            throw NetworkError.serverError("Authentication expired. Please log in again.")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            // Try to parse error message from response
+            if let errorResponse = try? JSONDecoder().decode([String: String].self, from: data),
+               let errorMessage = errorResponse["error"] {
+                throw NetworkError.serverError(errorMessage)
+            }
+            throw NetworkError.serverError("Failed to withdraw registration. Status: \(httpResponse.statusCode)")
+        }
+
+        // Decode response
+        let withdrawResponse = try JSONDecoder().decode(WithdrawResponse.self, from: data)
+        print("✅ [NetworkManager] Program registration withdrawn successfully. Refund required: \(withdrawResponse.refund_required)")
+
+        return withdrawResponse
+    }
+
+    func processRefund(participantId: Int, amount: Double, saleId: String) async throws -> RefundResponse {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+
+        let url = baseURL.appendingPathComponent("v1/mobile/programs/refund")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = [
+            "participant_id": participantId,
+            "amount": amount,
+            "sale_id": saleId
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        print("🚀 [NetworkManager] Processing refund for participant \(participantId), amount: $\(amount)")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+
+        print("📡 [NetworkManager] processRefund: HTTP Status \(httpResponse.statusCode)")
+
+        if httpResponse.statusCode == 401 {
+            DatabaseManager.shared.clearSession()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            }
+            throw NetworkError.serverError("Authentication expired. Please log in again.")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorResponse = try? JSONDecoder().decode([String: String].self, from: data),
+               let errorMessage = errorResponse["error"] {
+                throw NetworkError.serverError(errorMessage)
+            }
+            throw NetworkError.serverError("Failed to process refund. Status: \(httpResponse.statusCode)")
+        }
+
+        let refundResponse = try JSONDecoder().decode(RefundResponse.self, from: data)
+        print("✅ [NetworkManager] Refund processed successfully: \(refundResponse.refund_status)")
+
+        return refundResponse
+    }
+
+    // MARK: - Response Models
+    struct WithdrawResponse: Codable {
+        let success: Bool
+        let message: String
+        let refund_required: Bool
+        let refund_data: RefundData?
+    }
+
+    struct RefundData: Codable {
+        let amount: Double
+        let sale_id: String
+        let participant_id: Int
+    }
+
+    struct RefundResponse: Codable {
+        let success: Bool
+        let message: String
+        let refund_status: String
+        let refund_id: String
+        let refund_amount: Double
+    }
 
     /// Generic JSON POST/GET helper, retries once on 401
     private func performRequest(

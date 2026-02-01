@@ -11,7 +11,12 @@ struct PurchaseDetailView: View {
     let record: PurchaseRecord
     @StateObject private var viewModel = PurchaseDetailViewModel()
     @Environment(\.presentationMode) private var presentationMode
-    
+
+    @State private var showWithdrawConfirmation = false
+    @State private var showWithdrawSuccess = false
+    @State private var participantNamesForWithdraw = ""
+    @State private var programNameForWithdraw = ""
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -31,9 +36,45 @@ struct PurchaseDetailView: View {
                             TicketDetailsSection(ticketDetail: viewModel.ticketDetail)
                         } else {
                             ProgramDetailsSection(programDetail: viewModel.programDetail)
+
+                            // Withdrawal Button - Only show for eligible statuses
+                            if let detail = viewModel.programDetail,
+                               !["cancelled", "withdrawn", "rejected", "failed"].contains(detail.regStatus.lowercased()) {
+
+                                Button(action: {
+                                    // Prepare confirmation message data
+                                    participantNamesForWithdraw = detail.details.map { $0.name }.joined(separator: ", ")
+                                    programNameForWithdraw = detail.category.programs.name
+                                    showWithdrawConfirmation = true
+                                }) {
+                                    HStack(spacing: 12) {
+                                        if viewModel.isWithdrawing {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .scaleEffect(0.9)
+                                        } else {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.headline)
+                                        }
+
+                                        Text(viewModel.isWithdrawing ? "Withdrawing..." : "Withdraw Registration")
+                                            .font(.headline)
+                                            .fontWeight(.semibold)
+
+                                        Spacer()
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(16)
+                                    .background(viewModel.isWithdrawing ? Color.gray : Color.orange)
+                                    .cornerRadius(16)
+                                    .shadow(color: (viewModel.isWithdrawing ? Color.gray : Color.orange).opacity(0.3), radius: 8, x: 0, y: 4)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(viewModel.isWithdrawing)
+                            }
                         }
                     }
-                    
+
                     Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 20)
@@ -43,6 +84,51 @@ struct PurchaseDetailView: View {
         .navigationBarBackButtonHidden(false)
         .task {
             await viewModel.loadDetails(for: record)
+        }
+        .alert("Confirm Withdrawal", isPresented: $showWithdrawConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Withdraw", role: .destructive) {
+                Task {
+                    await handleWithdraw()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to withdraw \(participantNamesForWithdraw) from \(programNameForWithdraw)?")
+        }
+        .alert("Withdrawal Successful", isPresented: $showWithdrawSuccess) {
+            Button("OK", role: .cancel) {
+                presentationMode.wrappedValue.dismiss()
+            }
+        } message: {
+            if let successMsg = viewModel.withdrawSuccessMessage {
+                Text(successMsg)
+            } else {
+                Text("\(participantNamesForWithdraw)'s \(programNameForWithdraw) registration has been withdrawn successfully.")
+            }
+        }
+        .alert("Withdrawal Failed", isPresented: Binding(
+            get: { viewModel.withdrawErrorMessage != nil },
+            set: { if !$0 { viewModel.withdrawErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            if let error = viewModel.withdrawErrorMessage {
+                Text(error)
+            }
+        }
+    }
+
+    private func handleWithdraw() async {
+        guard let detail = viewModel.programDetail else { return }
+
+        await viewModel.withdrawRegistration(participantId: detail.id)
+
+        if viewModel.withdrawSuccess {
+            // Set success message from server or use default
+            if viewModel.withdrawSuccessMessage == nil {
+                viewModel.withdrawSuccessMessage = "\(participantNamesForWithdraw)'s \(programNameForWithdraw) registration has been withdrawn successfully."
+            }
+            showWithdrawSuccess = true
         }
     }
 }
@@ -207,6 +293,8 @@ struct StatusBadge: View {
             return "Rejected"
         case "failed":
             return "Failed"
+        case "cancelled", "withdrawn":
+            return "Withdrawn"
         default:
             return status
         }
@@ -226,6 +314,8 @@ struct StatusBadge: View {
             return (.yellow, "hourglass")
         case "rejected", "failed":
             return (.red, "xmark.circle.fill")
+        case "cancelled", "withdrawn":
+            return (.gray, "minus.circle.fill")
         default:
             return (.gray, "questionmark.circle.fill")
         }

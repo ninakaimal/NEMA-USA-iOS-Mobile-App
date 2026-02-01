@@ -24,5 +24,14 @@ Packages/
 # Claude AI specific files
 CLAUDE.md
 
+# Backend files
+backend/
+
+#database and mobile schema
+databaseschema/
+
+# debugfiles
+debug/
+
 
 .env

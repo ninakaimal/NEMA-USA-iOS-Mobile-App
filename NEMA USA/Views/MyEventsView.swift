@@ -185,6 +185,8 @@ struct MyEventCard: View {
             return .yellow
         case "rejected", "failed":
             return .red
+        case "cancelled", "withdrawn":
+            return .gray
         default:
             return .gray
         }
@@ -204,6 +206,8 @@ struct MyEventCard: View {
             return "Rejected"
         case "failed":
             return "Failed"
+        case "cancelled", "withdrawn":
+            return "Withdrawn"
         default:
             return record.status
         }
