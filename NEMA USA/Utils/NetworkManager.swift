@@ -1276,10 +1276,10 @@ final class NetworkManager: NSObject {
     
     func getEligibleParticipants(forProgramId programId: String) async throws -> [FamilyMember] {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
-            print("DEBUG: [getEligibleParticipants] JWT token is NIL. Throwing unauthenticated error.")
+            print("❌ [NetworkManager] getEligibleParticipants: JWT token is NIL. Throwing unauthenticated error.")
             throw NetworkError.serverError("User not authenticated.")
         }
-        
+
         let url = baseURL.appendingPathComponent("v1/mobile/programs/\(programId)/eligible-participants")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -1288,42 +1288,58 @@ final class NetworkManager: NSObject {
 
         print("🚀 [NetworkManager] Fetching eligible participants for program \(programId) from URL: \(url.absoluteString)")
 
-        // Use performRequest with completion-based API converted to async
-        return try await withCheckedThrowingContinuation { continuation in
-            performRequest(request) { result in
-                switch result {
-                case .success(let data):
-                    do {
-                        let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
-                        print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
-                        continuation.resume(returning: decodedParticipants)
-                    } catch {
-                        print("❌ [NetworkManager] getEligibleParticipants: Caught decoding/network error: \(error)")
-                        // Keep the original detailed error logging
-                        if let decodingError = error as? DecodingError {
-                            switch decodingError {
-                            case .typeMismatch(let type, let context):
-                                print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
-                            case .valueNotFound(let type, let context):
-                                print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
-                            case .keyNotFound(let key, let context):
-                                print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
-                            case .dataCorrupted(let context):
-                                print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
-                            @unknown default:
-                                print("Unknown decoding error.")
-                            }
-                            continuation.resume(throwing: NetworkError.decodingError(error))
-                        } else {
-                            continuation.resume(throwing: error)
-                        }
-                    }
-                    
-                case .failure(let error):
-                    print("❌ [NetworkManager] getEligibleParticipants: Network request failed: \(error)")
-                    continuation.resume(throwing: error)
-                }
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ [NetworkManager] getEligibleParticipants: Invalid response type")
+                throw NetworkError.invalidResponse
             }
+
+            print("📡 [NetworkManager] getEligibleParticipants: HTTP Status \(httpResponse.statusCode)")
+
+            if httpResponse.statusCode == 401 {
+                print("🔒 [NetworkManager] getEligibleParticipants: Unauthorized - clearing session")
+                DatabaseManager.shared.clearSession()
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+                }
+                throw NetworkError.serverError("Authentication expired. Please log in again.")
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
+                print("❌ [NetworkManager] getEligibleParticipants: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+                throw NetworkError.serverError("Failed to load eligible participants. Status: \(httpResponse.statusCode). \(errorBody)")
+            }
+
+            do {
+                let decodedParticipants = try self.iso8601JSONDecoder.decode([FamilyMember].self, from: data)
+                print("✅ [NetworkManager] Successfully decoded \(decodedParticipants.count) eligible participants.")
+                return decodedParticipants
+            } catch {
+                print("❌ [NetworkManager] getEligibleParticipants: Decoding failed: \(error)")
+                if let decodingError = error as? DecodingError {
+                    switch decodingError {
+                    case .typeMismatch(let type, let context):
+                        print("TypeMismatch for \(type) at \(context.codingPath): \(context.debugDescription)")
+                    case .valueNotFound(let type, let context):
+                        print("ValueNotFound for \(type) at \(context.codingPath): \(context.debugDescription)")
+                    case .keyNotFound(let key, let context):
+                        print("KeyNotFound for \(key) at \(context.codingPath): \(context.debugDescription)")
+                    case .dataCorrupted(let context):
+                        print("DataCorrupted at \(context.codingPath): \(context.debugDescription)")
+                    @unknown default:
+                        print("Unknown decoding error.")
+                    }
+                }
+                throw NetworkError.decodingError(error)
+            }
+        } catch let networkError as NetworkError {
+            throw networkError
+        } catch {
+            print("❌ [NetworkManager] getEligibleParticipants: Network error: \(error)")
+            throw NetworkError.serverError("Network error: \(error.localizedDescription)")
         }
     }
     
