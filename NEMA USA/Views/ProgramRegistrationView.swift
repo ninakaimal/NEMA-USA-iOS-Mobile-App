@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - ViewModel
 @MainActor
@@ -447,6 +448,17 @@ struct ProgramRegistrationView: View {
                         TextEditor(text: $viewModel.comments)
                             .frame(height: 80)
                     }
+
+                    // Policies
+                    if ProgramPoliciesCard.hasContent(for: program) {
+                        Section(header: Text("Rules & Policies")) {
+                            ProgramPoliciesCard(
+                                instructionsHTML: program.instructionsHTML,
+                                refundPolicyHTML: program.refundPolicyHTML,
+                                penaltyDetails: program.penaltyDetails
+                            )
+                        }
+                    }
                     
                     // Terms
                     Section {
@@ -651,3 +663,151 @@ struct ProgramRegistrationView: View {
         }
     }
 }
+
+
+struct ProgramPoliciesCard: View {
+    let instructionsHTML: String?
+    let refundPolicyHTML: String?
+    let penaltyDetails: PenaltyDetails?
+
+    private static let defaultInstructionBullets = [
+        "Please provide the requested participant details before submitting your registration.",
+        "Registration fees are due at the time of submission. Pay by PayPal or credit card via PayPal guest checkout.",
+        "Verify that your PayPal login (or guest checkout) works prior to starting the registration.",
+        "Membership status will be validated at the event check-in.",
+        "NEMA reserves the right to request a birth certificate to verify participant ages.",
+        "Check your email SPAM folder if you do not see a confirmation email.",
+        "Food Allergy Disclaimer: Meals or snacks may contain allergens. Consume at your own risk.",
+        "Firecrackers Disclaimer: Certain events may include fireworks. NEMA is not responsible for injuries or damages."
+    ]
+
+    private static let defaultRefundBullets = [
+        "A full refund will be issued only if NEMA cancels the event.",
+        "Withdrawing before the registration deadline incurs the program-specific penalty shown below.",
+        "Withdrawing after the registration deadline forfeits 100% of the fees."
+    ]
+
+    static func hasContent(for program: EventProgram) -> Bool {
+        return true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            instructionsSection
+            Divider()
+            refundSection
+            if let penaltyDetails, (penaltyDetails.showPenalty ?? false) {
+                Divider()
+                penaltySection(details: penaltyDetails)
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+
+    @ViewBuilder
+    private var instructionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Instructions")
+                .font(.headline)
+            if let instructionsHTML, !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ProgramHTMLText(html: instructionsHTML)
+            } else {
+                bulletList(Self.defaultInstructionBullets)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var refundSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Refund Policy")
+                .font(.headline)
+            if let refundPolicyHTML, !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ProgramHTMLText(html: refundPolicyHTML)
+            } else {
+                bulletList(Self.defaultRefundBullets)
+            }
+        }
+    }
+
+    private func penaltySection(details: PenaltyDetails) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Withdrawal Penalty")
+                .font(.headline)
+            if let regCloseDate = details.regCloseDate {
+                Text("Registration Deadline: \(regCloseDate)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            if let penaltyText = details.withdrawalPenaltyText {
+                Text(penaltyText)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            } else if details.penaltyType == "no_refund" {
+                Text("No refunds available after registration closes.")
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    private func bulletList(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+        }
+    }
+}
+
+struct ProgramHTMLText: View {
+    let html: String
+
+    var body: some View {
+        Text(createAttributedString())
+    }
+
+    private func createAttributedString() -> AttributedString {
+        let styledHTML = """
+        <style>
+            body {
+                font-family: -apple-system, sans-serif;
+                font-size: \(UIFont.preferredFont(forTextStyle: .body).pointSize)px;
+                color: \(UIColor.label.toHex());
+            }
+        </style>
+        \(html)
+        """
+
+        guard let data = styledHTML.data(using: .utf8),
+              let nsAttributedString = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return AttributedString()
+        }
+
+        return AttributedString(nsAttributedString)
+    }
+}
+
+extension UIColor {
+    func toHex() -> String {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        guard self.getRed(&r, green: &g, blue: &b, alpha: &a) else {
+            return "#000000"
+        }
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
+    }
+}
+

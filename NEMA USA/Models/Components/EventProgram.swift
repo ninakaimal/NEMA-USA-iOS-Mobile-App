@@ -13,6 +13,9 @@ struct EventProgram: Identifiable, Codable, Hashable {
     let name: String
     let time: String?
     let rulesAndGuidelines: String?
+    let instructionsHTML: String?
+    let refundPolicyHTML: String?
+    let penaltyDetails: PenaltyDetails?
     let registrationStatus: String?
     let categories: [ProgramCategory]
     let practiceLocations: [PracticeLocation]?
@@ -27,6 +30,9 @@ struct EventProgram: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, time, categories, event
         case rulesAndGuidelines = "rules_and_guidelines"
+        case instructionsHTML = "instructions_html"
+        case refundPolicyHTML = "refund_policy_html"
+        case penaltyDetails = "penalty_details"
         case registrationStatus = "registration_status"
         case practiceLocations = "practice_locations"
         case othersFee = "others_fee"
@@ -73,6 +79,22 @@ struct EventProgram: Identifiable, Codable, Hashable {
         } else {
             return "Free"
         }
+    }
+}
+
+struct PenaltyDetails: Codable, Hashable {
+    let regCloseDate: String?
+    let withdrawalPenaltyText: String?
+    let penaltyAmount: Double?
+    let penaltyType: String?
+    let showPenalty: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case regCloseDate = "reg_close_date"
+        case withdrawalPenaltyText = "withdrawal_penalty_text"
+        case penaltyAmount = "penalty_amount"
+        case penaltyType = "penalty_type"
+        case showPenalty = "show_penalty"
     }
 }
 
