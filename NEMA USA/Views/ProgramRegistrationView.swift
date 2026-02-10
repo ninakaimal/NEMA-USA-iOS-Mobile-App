@@ -337,31 +337,31 @@ struct ProgramRegistrationView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Form {
-                    // User info section for paid programs
-                    if program.requiresPayment {
-                        Section(header: HStack {
-                            Text("Your Information")
+                    // Your Information section is always visible
+                    Section(header: HStack {
+                        Text("Your Information")
+                        if program.requiresPayment {
                             Text("(\(program.formattedPrice))")
                                 .foregroundColor(.orange)
                                 .font(.caption)
-                        }) {
-                            TextField("Full Name", text: $memberNameText)
-                                .textFieldStyle(.roundedBorder)
-                                .textContentType(.name)
-                                .autocapitalization(.words)
-                            
-                            TextField("Email Address", text: $emailAddressText)
-                                .keyboardType(.emailAddress)
-                                .textFieldStyle(.roundedBorder)
-                                .textContentType(.emailAddress)
-                                .autocapitalization(.none)
-                                .disableAutocorrection(true)
-                            
-                            TextField("Phone Number", text: $phoneText)
-                                .keyboardType(.phonePad)
-                                .textFieldStyle(.roundedBorder)
-                                .textContentType(.telephoneNumber)
                         }
+                    }) {
+                        TextField("Full Name", text: $memberNameText)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.name)
+                            .autocapitalization(.words)
+                        
+                        TextField("Email Address", text: $emailAddressText)
+                            .keyboardType(.emailAddress)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.emailAddress)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                        
+                        TextField("Phone Number", text: $phoneText)
+                            .keyboardType(.phonePad)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.telephoneNumber)
                     }
                     
                     // Participant Selection
