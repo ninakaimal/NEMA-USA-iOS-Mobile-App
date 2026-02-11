@@ -9,6 +9,9 @@ import UIKit
 // MARK: - ViewModel
 @MainActor
 class ProgramRegistrationViewModel: ObservableObject {
+    @Published var guestName: String = ""
+    @Published var guestAgeText: String = ""
+
     @Published var eligibleParticipants: [FamilyMember] = []
     @Published var selectedParticipantIDs = Set<Int>()
     @Published var selectedPracticeLocationId: Int? = nil
@@ -29,12 +32,38 @@ class ProgramRegistrationViewModel: ObservableObject {
 
     private let networkManager = NetworkManager.shared
 
+    private var trimmedGuestName: String { guestName.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedGuestAgeText: String { guestAgeText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var guestAgeValue: Int? {
+        guard let age = Int(trimmedGuestAgeText), age > 0 else { return nil }
+        return age
+    }
+    var isGuestProvided: Bool {
+        !trimmedGuestName.isEmpty || !trimmedGuestAgeText.isEmpty
+    }
+    var guestInputError: String? {
+        guard isGuestProvided else { return nil }
+        if trimmedGuestName.isEmpty {
+            return "Enter guest participant name"
+        }
+        guard guestAgeValue != nil else {
+            return "Enter a valid guest age"
+        }
+        return nil
+    }
+    var guestPayload: [String: Any]? {
+        guard guestInputError == nil, isGuestProvided, let age = guestAgeValue else { return nil }
+        return ["name": trimmedGuestName, "age": age]
+    }
+    var hasSelectedFamilyParticipants: Bool { !selectedParticipantIDs.isEmpty }
+    var hasAnyParticipantSelection: Bool { hasSelectedFamilyParticipants || guestPayload != nil }
+
     func canSubmit(for program: EventProgram) -> Bool {
-        guard !selectedParticipantIDs.isEmpty && acceptedTerms else { return false }
+        guard hasAnyParticipantSelection && acceptedTerms else { return false }
         if let locations = program.practiceLocations, !locations.isEmpty {
             guard selectedPracticeLocationId != nil else { return false }
         }
-        return true
+        return guestInputError == nil
     }
     
     // ENHANCED: Additional validation for paid programs
@@ -129,7 +158,8 @@ class ProgramRegistrationViewModel: ObservableObject {
                 programId: program.id,
                 participantIds: Array(selectedParticipantIDs),
                 practiceLocationId: selectedPracticeLocationId,
-                comments: comments
+                comments: comments,
+                guestParticipant: guestPayload
             )
             await MainActor.run {
                 self.registrationSuccess = true
@@ -300,7 +330,7 @@ class ProgramRegistrationViewModel: ObservableObject {
         resetPaymentState()
         isLoading = false
         errorMessage = nil
-    }
+            }
 }
 
 // MARK: - Network Monitor (Simple Implementation)
@@ -371,8 +401,6 @@ struct ProgramRegistrationView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding()
-        .foregroundColor(Color(.secondaryLabel))
-        .accentColor(.orange)
                         } else if let errorMsg = viewModel.errorMessage {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(errorMsg)
@@ -424,6 +452,25 @@ struct ProgramRegistrationView: View {
                         }
                     }
                     
+                    // Guest Participant
+                    Section(header: Text("Add Guest Participant (Optional)")) {
+                        TextField("Guest Full Name", text: $viewModel.guestName)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.name)
+                            .autocapitalization(.words)
+                        TextField("Age", text: $viewModel.guestAgeText)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Use this if you need to register someone not already in your family list.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        if let guestError = viewModel.guestInputError {
+                            Text(guestError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    
                     // Practice Location Selection
                     if let locations = program.practiceLocations, !locations.isEmpty {
                         Section(header: HStack {
@@ -437,7 +484,7 @@ struct ProgramRegistrationView: View {
                                 }
                             }
                             .pickerStyle(MenuPickerStyle())
-                            if viewModel.selectedPracticeLocationId == nil && viewModel.acceptedTerms && !viewModel.selectedParticipantIDs.isEmpty {
+                            if viewModel.selectedPracticeLocationId == nil && viewModel.acceptedTerms && viewModel.hasAnyParticipantSelection {
                                 Text("Practice location is required for this program")
                                     .font(.caption)
                                     .foregroundColor(.red)
@@ -531,8 +578,13 @@ struct ProgramRegistrationView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 
-                                if viewModel.selectedParticipantIDs.isEmpty {
-                                    Text("• Select at least one participant")
+                                if !viewModel.hasAnyParticipantSelection {
+                                    Text("• Select a participant or add a guest")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                }
+                                if let guestError = viewModel.guestInputError {
+                                    Text("• \(guestError)")
                                         .font(.caption2)
                                         .foregroundColor(.orange)
                                 }
