@@ -449,17 +449,13 @@ struct ProgramRegistrationView: View {
                             .frame(height: 80)
                     }
 
-                    // Policies
-                    if ProgramPoliciesCard.hasContent(for: program) {
-                        Section(header: Text("Rules & Policies")) {
-                            ProgramPoliciesCard(
-                                instructionsHTML: program.instructionsHTML,
-                                refundPolicyHTML: program.refundPolicyHTML,
-                                penaltyDetails: program.penaltyDetails
-                            )
-                        }
-                    }
-                    
+
+                    TermsDisclosureView(
+                        instructionsHTML: program.instructionsHTML,
+                        refundPolicyHTML: program.refundPolicyHTML,
+                        penaltyDetails: program.penaltyDetails
+                    )
+
                     // Terms
                     Section {
                         Toggle("I accept rules, guidelines and waiver for this program", isOn: $viewModel.acceptedTerms)
@@ -665,12 +661,15 @@ struct ProgramRegistrationView: View {
 }
 
 
-struct ProgramPoliciesCard: View {
+
+struct TermsDisclosureView: View {
     let instructionsHTML: String?
     let refundPolicyHTML: String?
     let penaltyDetails: PenaltyDetails?
 
-    private static let defaultInstructionBullets = [
+    @State private var isExpanded = false
+
+    private let defaultInstructions = [
         "Please provide the requested participant details before submitting your registration.",
         "Registration fees are due at the time of submission. Pay by PayPal or credit card via PayPal guest checkout.",
         "Verify that your PayPal login (or guest checkout) works prior to starting the registration.",
@@ -681,17 +680,49 @@ struct ProgramPoliciesCard: View {
         "Firecrackers Disclaimer: Certain events may include fireworks. NEMA is not responsible for injuries or damages."
     ]
 
-    private static let defaultRefundBullets = [
+    private let defaultRefunds = [
         "A full refund will be issued only if NEMA cancels the event.",
         "Withdrawing before the registration deadline incurs the program-specific penalty shown below.",
         "Withdrawing after the registration deadline forfeits 100% of the fees."
     ]
 
-    static func hasContent(for program: EventProgram) -> Bool {
-        return true
-    }
-
     var body: some View {
+        Section {
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ProgramPoliciesCard(
+                        instructionsHTML: instructionsHTML,
+                        refundPolicyHTML: refundPolicyHTML,
+                        penaltyDetails: penaltyDetails,
+                        defaultInstructionBullets: defaultInstructions,
+                        defaultRefundBullets: defaultRefunds
+                    )
+                }
+                .transition(.opacity)
+            }
+        } header: {
+            Button(action: { withAnimation { isExpanded.toggle() } }) {
+                HStack {
+                    Text("View Rules & Policies")
+                        .font(.headline)
+                        .foregroundColor(.orange)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.orange)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+}
+struct ProgramPoliciesCard: View {
+    let instructionsHTML: String?
+    let refundPolicyHTML: String?
+    let penaltyDetails: PenaltyDetails?
+    let defaultInstructionBullets: [String]
+    let defaultRefundBullets: [String]
+
+        var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             instructionsSection
             Divider()
@@ -715,7 +746,7 @@ struct ProgramPoliciesCard: View {
             if let instructionsHTML, !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: instructionsHTML)
             } else {
-                bulletList(Self.defaultInstructionBullets)
+                bulletList(defaultInstructionBullets)
             }
         }
     }
@@ -729,7 +760,7 @@ struct ProgramPoliciesCard: View {
             if let refundPolicyHTML, !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: refundPolicyHTML)
             } else {
-                bulletList(Self.defaultRefundBullets)
+                bulletList(defaultRefundBullets)
             }
         }
     }
