@@ -499,6 +499,13 @@ struct ProgramRegistrationView: View {
                     }
 
                     // Policies
+                    if let rules = program.rulesAndGuidelines, !rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Section(header: Text("Rules & Guidelines")) {
+                            RuleTextView(instructionsHTML: program.instructionsHTML, fallbackRules: rules)
+                        }
+                    }
+
+                    // Policies
                     if ProgramPoliciesCard.hasContent(for: program) {
                         Section(header: Text("Rules & Policies")) {
                             ProgramPoliciesCard(
@@ -929,6 +936,20 @@ extension String {
     var nonEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+
+struct RuleTextView: View {
+    let instructionsHTML: String?
+    let fallbackRules: String
+
+    var body: some View {
+        if let html = instructionsHTML, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ProgramHTMLText(html: html)
+        } else {
+            Text(fallbackRules)
+        }
     }
 }
 
