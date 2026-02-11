@@ -371,6 +371,8 @@ struct ProgramRegistrationView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding()
+        .foregroundColor(Color(.secondaryLabel))
+        .accentColor(.orange)
                         } else if let errorMsg = viewModel.errorMessage {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(errorMsg)
@@ -702,6 +704,7 @@ struct ProgramPoliciesCard: View {
             } label: {
                 Text("Instructions")
                     .font(.headline)
+                    .foregroundColor(.orange)
             }
 
             DisclosureGroup(isExpanded: $showRefund) {
@@ -710,6 +713,7 @@ struct ProgramPoliciesCard: View {
             } label: {
                 Text("Refund Policy")
                     .font(.headline)
+                    .foregroundColor(.orange)
             }
 
             if let penaltyDetails, (penaltyDetails.showPenalty ?? false) {
@@ -772,6 +776,7 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Withdrawal Penalty")
                 .font(.headline)
+                .foregroundColor(.orange)
             if let regCloseDate = details.regCloseDate {
                 Text("Registration Deadline: \(regCloseDate)")
                     .font(.subheadline)
@@ -780,7 +785,7 @@ struct ProgramPoliciesCard: View {
             if let penaltyText = details.withdrawalPenaltyText {
                 Text(penaltyText)
                     .font(.subheadline)
-                    .foregroundColor(.primary)
+                    .foregroundColor(Color(.secondaryLabel))
             } else if details.penaltyType == "no_refund" {
                 Text("No refunds available after registration closes.")
                     .font(.subheadline)
@@ -793,7 +798,7 @@ struct ProgramPoliciesCard: View {
             ForEach(items, id: \.self) { item in
                 Text("• \(item)")
                     .font(.subheadline)
-                    .foregroundColor(.primary)
+                    .foregroundColor(Color(.secondaryLabel))
             }
         }
     }
