@@ -502,21 +502,14 @@ struct ProgramRegistrationView: View {
                     if let instructions = program.instructionsHTML ?? program.rulesAndGuidelines,
                        !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Section(header: Text("Instructions")) {
-                            if let html = program.instructionsHTML,
-                               !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                ProgramHTMLText(html: html)
-                            } else {
-                                Text(instructions)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
+                            ProgramHTMLTextOrFallback(html: program.instructionsHTML, fallbackText: instructions)
                         }
                     }
 
                     if let refundHTML = program.refundPolicyHTML,
                        !refundHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Section(header: Text("Refund Policy")) {
-                            ProgramHTMLText(html: refundHTML)
+                            ProgramHTMLTextOrFallback(html: refundHTML, fallbackText: nil)
                         }
                     }
 
@@ -746,7 +739,59 @@ struct ProgramRegistrationView: View {
 }
 
 
-extension String {extension String {
+struct ProgramHTMLTextOrFallback: View {
+    let html: String?
+    let fallbackText: String?
+
+    var body: some View {
+        if let html = html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ProgramHTMLText(html: html)
+        } else if let fallbackText = fallbackText {
+            Text(fallbackText)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        } else {
+            EmptyView()
+        }
+    }
+}
+
+struct ProgramHTMLText: View {
+    let html: String
+
+    var body: some View {
+        Text(createAttributedString())
+    }
+
+    private func createAttributedString() -> AttributedString {
+        let styledHTML = """
+        <style>
+            body {
+                font-family: -apple-system, sans-serif;
+                font-size: \(UIFont.preferredFont(forTextStyle: .body).pointSize)px;
+                color: \(UIColor.label.toHex());
+            }
+        </style>
+        \(html)
+        """
+
+        guard let data = styledHTML.data(using: .utf8),
+              let nsAttributedString = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return AttributedString()
+        }
+
+        return AttributedString(nsAttributedString)
+    }
+}
+
+extension String {
     var nonEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
