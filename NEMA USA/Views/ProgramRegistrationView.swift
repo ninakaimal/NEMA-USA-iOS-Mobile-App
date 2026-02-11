@@ -711,6 +711,7 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Instructions")
                 .font(.headline)
+                .foregroundColor(.orange)
             if let instructionsHTML, !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: instructionsHTML)
             } else {
@@ -724,6 +725,7 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Refund Policy")
                 .font(.headline)
+                .foregroundColor(.orange)
             if let refundPolicyHTML, !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: refundPolicyHTML)
             } else {
@@ -736,6 +738,7 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Withdrawal Penalty")
                 .font(.headline)
+                .foregroundColor(.orange)
             if let regCloseDate = details.regCloseDate {
                 Text("Registration Deadline: \(regCloseDate)")
                     .font(.subheadline)
@@ -744,10 +747,11 @@ struct ProgramPoliciesCard: View {
             if let penaltyText = details.withdrawalPenaltyText {
                 Text(penaltyText)
                     .font(.subheadline)
-                    .foregroundColor(.primary)
+                    .foregroundColor(Color(.secondaryLabel))
             } else if details.penaltyType == "no_refund" {
                 Text("No refunds available after registration closes.")
                     .font(.subheadline)
+                    .foregroundColor(Color(.secondaryLabel))
             }
         }
     }
@@ -757,7 +761,7 @@ struct ProgramPoliciesCard: View {
             ForEach(items, id: \.self) { item in
                 Text("• \(item)")
                     .font(.subheadline)
-                    .foregroundColor(.primary)
+                    .foregroundColor(Color(.secondaryLabel))
             }
         }
     }
