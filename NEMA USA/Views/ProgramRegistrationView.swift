@@ -9,9 +9,6 @@ import UIKit
 // MARK: - ViewModel
 @MainActor
 class ProgramRegistrationViewModel: ObservableObject {
-    @Published var guestName: String = ""
-    @Published var guestAgeText: String = ""
-
     @Published var eligibleParticipants: [FamilyMember] = []
     @Published var selectedParticipantIDs = Set<Int>()
     @Published var selectedPracticeLocationId: Int? = nil
@@ -32,38 +29,12 @@ class ProgramRegistrationViewModel: ObservableObject {
 
     private let networkManager = NetworkManager.shared
 
-    private var trimmedGuestName: String { guestName.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedGuestAgeText: String { guestAgeText.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var guestAgeValue: Int? {
-        guard let age = Int(trimmedGuestAgeText), age > 0 else { return nil }
-        return age
-    }
-    var isGuestProvided: Bool {
-        !trimmedGuestName.isEmpty || !trimmedGuestAgeText.isEmpty
-    }
-    var guestInputError: String? {
-        guard isGuestProvided else { return nil }
-        if trimmedGuestName.isEmpty {
-            return "Enter guest participant name"
-        }
-        guard guestAgeValue != nil else {
-            return "Enter a valid guest age"
-        }
-        return nil
-    }
-    var guestPayload: [String: Any]? {
-        guard guestInputError == nil, isGuestProvided, let age = guestAgeValue else { return nil }
-        return ["name": trimmedGuestName, "age": age]
-    }
-    var hasSelectedFamilyParticipants: Bool { !selectedParticipantIDs.isEmpty }
-    var hasAnyParticipantSelection: Bool { hasSelectedFamilyParticipants || guestPayload != nil }
-
     func canSubmit(for program: EventProgram) -> Bool {
-        guard hasAnyParticipantSelection && acceptedTerms else { return false }
+        guard !selectedParticipantIDs.isEmpty && acceptedTerms else { return false }
         if let locations = program.practiceLocations, !locations.isEmpty {
             guard selectedPracticeLocationId != nil else { return false }
         }
-        return guestInputError == nil
+        return true
     }
     
     // ENHANCED: Additional validation for paid programs
@@ -158,8 +129,7 @@ class ProgramRegistrationViewModel: ObservableObject {
                 programId: program.id,
                 participantIds: Array(selectedParticipantIDs),
                 practiceLocationId: selectedPracticeLocationId,
-                comments: comments,
-                guestParticipant: guestPayload
+                comments: comments
             )
             await MainActor.run {
                 self.registrationSuccess = true
@@ -330,7 +300,7 @@ class ProgramRegistrationViewModel: ObservableObject {
         resetPaymentState()
         isLoading = false
         errorMessage = nil
-            }
+    }
 }
 
 // MARK: - Network Monitor (Simple Implementation)
@@ -452,25 +422,6 @@ struct ProgramRegistrationView: View {
                         }
                     }
                     
-                    // Guest Participant
-                    Section(header: Text("Add Guest Participant (Optional)")) {
-                        TextField("Guest Full Name", text: $viewModel.guestName)
-                            .textFieldStyle(.roundedBorder)
-                            .textContentType(.name)
-                            .autocapitalization(.words)
-                        TextField("Age", text: $viewModel.guestAgeText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Use this if you need to register someone not already in your family list.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        if let guestError = viewModel.guestInputError {
-                            Text(guestError)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
-                    }
-                    
                     // Practice Location Selection
                     if let locations = program.practiceLocations, !locations.isEmpty {
                         Section(header: HStack {
@@ -484,7 +435,7 @@ struct ProgramRegistrationView: View {
                                 }
                             }
                             .pickerStyle(MenuPickerStyle())
-                            if viewModel.selectedPracticeLocationId == nil && viewModel.acceptedTerms && viewModel.hasAnyParticipantSelection {
+                            if viewModel.selectedPracticeLocationId == nil && viewModel.acceptedTerms && !viewModel.selectedParticipantIDs.isEmpty {
                                 Text("Practice location is required for this program")
                                     .font(.caption)
                                     .foregroundColor(.red)
@@ -499,33 +450,13 @@ struct ProgramRegistrationView: View {
                     }
 
                     // Policies
-                    if let instructions = program.instructionsHTML ?? program.rulesAndGuidelines,
-                       !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Section(header: Text("Instructions")) {
-                            ProgramHTMLTextOrFallback(html: program.instructionsHTML, fallbackText: instructions)
-                        }
-                    }
-
-                    if let refundHTML = program.refundPolicyHTML,
-                       !refundHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Section(header: Text("Refund Policy")) {
-                            ProgramHTMLTextOrFallback(html: refundHTML, fallbackText: nil)
-                        }
-                    }
-
-                    if let penalty = program.penaltyDetails,
-                       (penalty.showPenalty ?? false) {
-                        Section(header: Text("Withdrawal Penalty")) {
-                            if let date = penalty.regCloseDate {
-                                Text("Registration Deadline: \(date)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            if let text = penalty.withdrawalPenaltyText {
-                                Text(text)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
+                    if ProgramPoliciesCard.hasContent(for: program) {
+                        Section(header: Text("Rules & Policies")) {
+                            ProgramPoliciesCard(
+                                instructionsHTML: program.instructionsHTML,
+                                refundPolicyHTML: program.refundPolicyHTML,
+                                penaltyDetails: program.penaltyDetails
+                            )
                         }
                     }
                     
@@ -598,13 +529,8 @@ struct ProgramRegistrationView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 
-                                if !viewModel.hasAnyParticipantSelection {
-                                    Text("• Select a participant or add a guest")
-                                        .font(.caption2)
-                                        .foregroundColor(.orange)
-                                }
-                                if let guestError = viewModel.guestInputError {
-                                    Text("• \(guestError)")
+                                if viewModel.selectedParticipantIDs.isEmpty {
+                                    Text("• Select at least one participant")
                                         .font(.caption2)
                                         .foregroundColor(.orange)
                                 }
@@ -739,52 +665,149 @@ struct ProgramRegistrationView: View {
 }
 
 
-struct ProgramHTMLTextOrFallback: View {
-    let html: String?
-    let fallbackText: String?
+struct ProgramPoliciesCard: View {
+    let instructionsHTML: String?
+    let refundPolicyHTML: String?
+    let penaltyDetails: PenaltyDetails?
+
+    private static let defaultInstructionBullets = [
+        "Please provide the requested participant details before submitting your registration.",
+        "Registration fees are due at the time of submission. Pay by PayPal or credit card via PayPal guest checkout.",
+        "Verify that your PayPal login (or guest checkout) works prior to starting the registration.",
+        "Membership status will be validated at the event check-in.",
+        "NEMA reserves the right to request a birth certificate to verify participant ages.",
+        "Check your email SPAM folder if you do not see a confirmation email.",
+        "Food Allergy Disclaimer: Meals or snacks may contain allergens. Consume at your own risk.",
+        "Firecrackers Disclaimer: Certain events may include fireworks. NEMA is not responsible for injuries or damages."
+    ]
+
+    private static let defaultRefundBullets = [
+        "A full refund will be issued only if NEMA cancels the event.",
+        "Withdrawing before the registration deadline incurs the program-specific penalty shown below.",
+        "Withdrawing after the registration deadline forfeits 100% of the fees."
+    ]
+
+    static func hasContent(for program: EventProgram) -> Bool {
+        return true
+    }
 
     var body: some View {
-        if let sanitized = sanitizedHTMLText {
-            Text(sanitized)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        } else if let fallbackText = fallbackText {
-            Text(fallbackText)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        } else {
-            EmptyView()
+        VStack(alignment: .leading, spacing: 16) {
+            instructionsSection
+            Divider()
+            refundSection
+            if let penaltyDetails, (penaltyDetails.showPenalty ?? false) {
+                Divider()
+                penaltySection(details: penaltyDetails)
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+
+    @ViewBuilder
+    private var instructionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Instructions")
+                .font(.headline)
+            if let instructionsHTML, !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ProgramHTMLText(html: instructionsHTML)
+            } else {
+                bulletList(Self.defaultInstructionBullets)
+            }
         }
     }
 
-    private var sanitizedHTMLText: String? {
-        guard let html = html else { return nil }
-        let stripped = html
-            .replacingOccurrences(of: "<li>", with: "
-• ", options: .caseInsensitive)
-            .replacingOccurrences(of: "<br>", with: "
-", options: .caseInsensitive)
-            .replacingOccurrences(of: "<br />", with: "
-", options: .caseInsensitive)
-            .replacingOccurrences(of: "</li>", with: "", options: .caseInsensitive)
-            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-        let decoded = stripped
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&mdash;", with: "-")
-        let collapsed = decoded
-            .replacingOccurrences(of: "\
-+", with: "\n", options: .regularExpression)
-            .replacingOccurrences(of: "\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return collapsed.isEmpty ? nil : collapsed
+    @ViewBuilder
+    private var refundSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Refund Policy")
+                .font(.headline)
+            if let refundPolicyHTML, !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ProgramHTMLText(html: refundPolicyHTML)
+            } else {
+                bulletList(Self.defaultRefundBullets)
+            }
+        }
+    }
+
+    private func penaltySection(details: PenaltyDetails) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Withdrawal Penalty")
+                .font(.headline)
+            if let regCloseDate = details.regCloseDate {
+                Text("Registration Deadline: \(regCloseDate)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            if let penaltyText = details.withdrawalPenaltyText {
+                Text(penaltyText)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            } else if details.penaltyType == "no_refund" {
+                Text("No refunds available after registration closes.")
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    private func bulletList(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+        }
     }
 }
 
-extension String {
-    var nonEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+struct ProgramHTMLText: View {
+    let html: String
+
+    var body: some View {
+        Text(createAttributedString())
+    }
+
+    private func createAttributedString() -> AttributedString {
+        let styledHTML = """
+        <style>
+            body {
+                font-family: -apple-system, sans-serif;
+                font-size: \(UIFont.preferredFont(forTextStyle: .body).pointSize)px;
+                color: \(UIColor.label.toHex());
+            }
+        </style>
+        \(html)
+        """
+
+        guard let data = styledHTML.data(using: .utf8),
+              let nsAttributedString = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return AttributedString()
+        }
+
+        return AttributedString(nsAttributedString)
+    }
+}
+
+extension UIColor {
+    func toHex() -> String {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        guard self.getRed(&r, green: &g, blue: &b, alpha: &a) else {
+            return "#000000"
+        }
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 }
 
