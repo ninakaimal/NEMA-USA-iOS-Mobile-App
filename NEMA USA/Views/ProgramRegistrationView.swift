@@ -670,6 +670,9 @@ struct ProgramPoliciesCard: View {
     let refundPolicyHTML: String?
     let penaltyDetails: PenaltyDetails?
 
+    @State private var showInstructions = false
+    @State private var showRefund = false
+
     private static let defaultInstructionBullets = [
         "Please provide the requested participant details before submitting your registration.",
         "Registration fees are due at the time of submission. Pay by PayPal or credit card via PayPal guest checkout.",
@@ -692,12 +695,25 @@ struct ProgramPoliciesCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            instructionsSection
-            Divider()
-            refundSection
+        VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(isExpanded: $showInstructions) {
+                instructionsContent()
+                    .padding(.top, 4)
+            } label: {
+                Text("Instructions")
+                    .font(.headline)
+            }
+
+            DisclosureGroup(isExpanded: $showRefund) {
+                refundContent()
+                    .padding(.top, 4)
+            } label: {
+                Text("Refund Policy")
+                    .font(.headline)
+            }
+
             if let penaltyDetails, (penaltyDetails.showPenalty ?? false) {
-                Divider()
+                Divider().padding(.vertical, 4)
                 penaltySection(details: penaltyDetails)
             }
         }
@@ -707,39 +723,49 @@ struct ProgramPoliciesCard: View {
     }
 
     @ViewBuilder
-    private var instructionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Instructions")
-                .font(.headline)
-            if let instructionsHTML,
-               !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               let parsedItems = Self.listItems(from: instructionsHTML) {
-                bulletList(parsedItems)
-            } else if let instructionsHTML,
-                      !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ProgramHTMLText(html: instructionsHTML)
-            } else {
-                bulletList(Self.defaultInstructionBullets)
-            }
+    private func instructionsContent() -> some View {
+        if let items = parsedInstructionItems {
+            bulletList(items)
+        } else if let html = trimmedInstructionsHTML {
+            ProgramHTMLText(html: html)
+        } else {
+            bulletList(Self.defaultInstructionBullets)
         }
     }
 
     @ViewBuilder
-    private var refundSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Refund Policy")
-                .font(.headline)
-            if let refundPolicyHTML,
-               !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               let parsedItems = Self.listItems(from: refundPolicyHTML) {
-                bulletList(parsedItems)
-            } else if let refundPolicyHTML,
-                      !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ProgramHTMLText(html: refundPolicyHTML)
-            } else {
-                bulletList(Self.defaultRefundBullets)
-            }
+    private func refundContent() -> some View {
+        if let items = parsedRefundItems {
+            bulletList(items)
+        } else if let html = trimmedRefundHTML {
+            ProgramHTMLText(html: html)
+        } else {
+            bulletList(Self.defaultRefundBullets)
         }
+    }
+
+    private var trimmedInstructionsHTML: String? {
+        guard let html = instructionsHTML?.trimmingCharacters(in: .whitespacesAndNewlines), !html.isEmpty else {
+            return nil
+        }
+        return html
+    }
+
+    private var trimmedRefundHTML: String? {
+        guard let html = refundPolicyHTML?.trimmingCharacters(in: .whitespacesAndNewlines), !html.isEmpty else {
+            return nil
+        }
+        return html
+    }
+
+    private var parsedInstructionItems: [String]? {
+        guard let html = trimmedInstructionsHTML else { return nil }
+        return Self.listItems(from: html)
+    }
+
+    private var parsedRefundItems: [String]? {
+        guard let html = trimmedRefundHTML else { return nil }
+        return Self.listItems(from: html)
     }
 
     private func penaltySection(details: PenaltyDetails) -> some View {
@@ -784,7 +810,7 @@ struct ProgramPoliciesCard: View {
                 let raw = nsString.substring(with: match.range(at: 1))
                 return Self.decodeHTML(raw)
                     .replacingOccurrences(of: "\n", with: " ")
-                    .replacingOccurrences(of: "\s+", with: " ", options: .regularExpression)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .nonEmpty
             }
@@ -806,17 +832,7 @@ struct ProgramPoliciesCard: View {
         ).string
         return decoded ?? string
     }
-
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(items, id: \.self) { item in
-                Text("• \(item)")
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-            }
-        }
-    }
 }
-
 struct ProgramHTMLText: View {
     let html: String
 
