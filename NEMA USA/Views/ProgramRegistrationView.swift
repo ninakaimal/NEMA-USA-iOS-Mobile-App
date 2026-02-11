@@ -744,8 +744,10 @@ struct ProgramHTMLTextOrFallback: View {
     let fallbackText: String?
 
     var body: some View {
-        if let html = html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            ProgramHTMLText(html: html)
+        if let sanitized = sanitizedHTMLText {
+            Text(sanitized)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
         } else if let fallbackText = fallbackText {
             Text(fallbackText)
                 .font(.subheadline)
@@ -754,40 +756,28 @@ struct ProgramHTMLTextOrFallback: View {
             EmptyView()
         }
     }
-}
 
-struct ProgramHTMLText: View {
-    let html: String
-
-    var body: some View {
-        Text(createAttributedString())
-    }
-
-    private func createAttributedString() -> AttributedString {
-        let styledHTML = """
-        <style>
-            body {
-                font-family: -apple-system, sans-serif;
-                font-size: \(UIFont.preferredFont(forTextStyle: .body).pointSize)px;
-                color: \(UIColor.label.toHex());
-            }
-        </style>
-        \(html)
-        """
-
-        guard let data = styledHTML.data(using: .utf8),
-              let nsAttributedString = try? NSAttributedString(
-                data: data,
-                options: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ],
-                documentAttributes: nil
-              ) else {
-            return AttributedString()
-        }
-
-        return AttributedString(nsAttributedString)
+    private var sanitizedHTMLText: String? {
+        guard let html = html else { return nil }
+        let stripped = html
+            .replacingOccurrences(of: "<li>", with: "
+• ", options: .caseInsensitive)
+            .replacingOccurrences(of: "<br>", with: "
+", options: .caseInsensitive)
+            .replacingOccurrences(of: "<br />", with: "
+", options: .caseInsensitive)
+            .replacingOccurrences(of: "</li>", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let decoded = stripped
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&mdash;", with: "-")
+        let collapsed = decoded
+            .replacingOccurrences(of: "\
++", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return collapsed.isEmpty ? nil : collapsed
     }
 }
 
