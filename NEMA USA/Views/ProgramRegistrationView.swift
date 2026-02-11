@@ -711,7 +711,12 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Instructions")
                 .font(.headline)
-            if let instructionsHTML, !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let instructionsHTML,
+               !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let parsedItems = Self.listItems(from: instructionsHTML) {
+                bulletList(parsedItems)
+            } else if let instructionsHTML,
+                      !instructionsHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: instructionsHTML)
             } else {
                 bulletList(Self.defaultInstructionBullets)
@@ -724,7 +729,12 @@ struct ProgramPoliciesCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Refund Policy")
                 .font(.headline)
-            if let refundPolicyHTML, !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let refundPolicyHTML,
+               !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let parsedItems = Self.listItems(from: refundPolicyHTML) {
+                bulletList(parsedItems)
+            } else if let refundPolicyHTML,
+                      !refundPolicyHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ProgramHTMLText(html: refundPolicyHTML)
             } else {
                 bulletList(Self.defaultRefundBullets)
@@ -753,6 +763,50 @@ struct ProgramPoliciesCard: View {
     }
 
     private func bulletList(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+        }
+    }
+
+    private static func listItems(from html: String) -> [String]? {
+        guard html.lowercased().contains("<li") else { return nil }
+        do {
+            let pattern = "(?is)<li[^>]*>(.*?)</li>"
+            let regex = try NSRegularExpression(pattern: pattern, options: [])
+            let nsString = html as NSString
+            let matches = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+            let items = matches.compactMap { match -> String? in
+                guard match.numberOfRanges > 1 else { return nil }
+                let raw = nsString.substring(with: match.range(at: 1))
+                return Self.decodeHTML(raw)
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .replacingOccurrences(of: "\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .nonEmpty
+            }
+            return items.isEmpty ? nil : items
+        } catch {
+            return nil
+        }
+    }
+
+    private static func decodeHTML(_ string: String) -> String {
+        guard let data = string.data(using: .utf8) else { return string }
+        let decoded = try? NSAttributedString(
+            data: data,
+            options: [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ],
+            documentAttributes: nil
+        ).string
+        return decoded ?? string
+    }
+
         VStack(alignment: .leading, spacing: 4) {
             ForEach(items, id: \.self) { item in
                 Text("• \(item)")
@@ -798,4 +852,10 @@ struct ProgramHTMLText: View {
     }
 }
 
+extension String {
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
 
