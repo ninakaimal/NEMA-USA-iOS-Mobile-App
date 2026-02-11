@@ -798,16 +798,4 @@ struct ProgramHTMLText: View {
     }
 }
 
-extension UIColor {
-    func toHex() -> String {
-        var r: CGFloat = 0
-        var g: CGFloat = 0
-        var b: CGFloat = 0
-        var a: CGFloat = 0
-        guard self.getRed(&r, green: &g, blue: &b, alpha: &a) else {
-            return "#000000"
-        }
-        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
-    }
-}
 
