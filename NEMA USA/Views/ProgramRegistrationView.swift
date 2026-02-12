@@ -14,6 +14,8 @@ class ProgramRegistrationViewModel: ObservableObject {
     @Published var selectedPracticeLocationId: Int? = nil
     @Published var comments: String = ""
     @Published var acceptedTerms = false
+    @Published var guestName: String = ""
+    @Published var guestAgeText: String = ""
     
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -29,8 +31,29 @@ class ProgramRegistrationViewModel: ObservableObject {
 
     private let networkManager = NetworkManager.shared
 
+    private var trimmedGuestName: String { guestName.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedGuestAgeText: String { guestAgeText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var guestAgeValue: Int? {
+        guard let age = Int(trimmedGuestAgeText), age > 0 else { return nil }
+        return age
+    }
+    var hasGuestInput: Bool { !trimmedGuestName.isEmpty || !trimmedGuestAgeText.isEmpty }
+    var guestInputError: String? {
+        guard hasGuestInput else { return nil }
+        if trimmedGuestName.isEmpty { return "Enter guest name" }
+        guard guestAgeValue != nil else { return "Enter a valid age" }
+        return nil
+    }
+    var guestPayload: [String: Any]? {
+        guard guestInputError == nil, hasGuestInput, let age = guestAgeValue else { return nil }
+        return ["name": trimmedGuestName, "age": age]
+    }
+    var hasAnyParticipantSelection: Bool {
+        !selectedParticipantIDs.isEmpty || guestPayload != nil
+    }
     func canSubmit(for program: EventProgram) -> Bool {
-        guard !selectedParticipantIDs.isEmpty && acceptedTerms else { return false }
+        guard hasAnyParticipantSelection && acceptedTerms else { return false }
+        guard guestInputError == nil else { return false }
         if let locations = program.practiceLocations, !locations.isEmpty {
             guard selectedPracticeLocationId != nil else { return false }
         }
@@ -129,7 +152,8 @@ class ProgramRegistrationViewModel: ObservableObject {
                 programId: program.id,
                 participantIds: Array(selectedParticipantIDs),
                 practiceLocationId: selectedPracticeLocationId,
-                comments: comments
+                comments: comments,
+                guestParticipant: guestPayload
             )
             await MainActor.run {
                 self.registrationSuccess = true
@@ -300,6 +324,8 @@ class ProgramRegistrationViewModel: ObservableObject {
         resetPaymentState()
         isLoading = false
         errorMessage = nil
+        guestName = ""
+        guestAgeText = ""
     }
 }
 
@@ -422,6 +448,25 @@ struct ProgramRegistrationView: View {
                         }
                     }
                     
+                    // Guest Participant (Optional)
+                    Section(header: Text("Add Guest Participant (Optional)")) {
+                        TextField("Guest Full Name", text: $viewModel.guestName)
+                            .textFieldStyle(.roundedBorder)
+                            .autocapitalization(.words)
+                        TextField("Age", text: $viewModel.guestAgeText)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.roundedBorder)
+                        if let guestError = viewModel.guestInputError {
+                            Text(guestError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        } else if viewModel.hasGuestInput {
+                            Text("Use this if you're registering someone outside your family list.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
                     // Practice Location Selection
                     if let locations = program.practiceLocations, !locations.isEmpty {
                         Section(header: HStack {
@@ -525,8 +570,13 @@ struct ProgramRegistrationView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 
-                                if viewModel.selectedParticipantIDs.isEmpty {
-                                    Text("• Select at least one participant")
+                                if !viewModel.hasAnyParticipantSelection {
+                                    Text("• Select a participant or add a guest")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                }
+                                if let guestError = viewModel.guestInputError {
+                                    Text("• \(guestError)")
                                         .font(.caption2)
                                         .foregroundColor(.orange)
                                 }
