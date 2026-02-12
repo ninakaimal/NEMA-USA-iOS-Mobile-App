@@ -147,6 +147,10 @@ class ProgramRegistrationViewModel: ObservableObject {
         }
         
         do {
+            print("[ProgramRegistration] Submitting program register request:")
+            print("  participants: \(Array(selectedParticipantIDs))")
+            print("  guest: \(String(describing: guestPayload))")
+            print("  practiceLocationId: \(String(describing: selectedPracticeLocationId))")
             try await networkManager.registerForProgram(
                 eventId: eventId,
                 programId: program.id,
