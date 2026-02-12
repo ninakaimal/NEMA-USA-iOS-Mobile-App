@@ -234,11 +234,13 @@ class ProgramRegistrationViewModel: ObservableObject {
             name: memberName,
             phone: phone,
             membershipType: nil,
-            packageId: Int(program.id), // Convert program ID to Int
+            packageId: Int(program.id),
             packageYears: nil,
             userId: currentUser.id,
             panthiId: nil,
-            lineItems: nil
+            lineItems: nil,
+            participantIds: Array(viewModel.selectedParticipantIDs),
+            guestParticipant: viewModel.guestPayload
         ) { result in
             DispatchQueue.main.async {
                 self.isProcessingPayment = false

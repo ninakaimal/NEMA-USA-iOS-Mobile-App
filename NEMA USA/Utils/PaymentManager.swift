@@ -94,6 +94,8 @@ final class PaymentManager: NSObject {
         userId: Int? = nil,
         panthiId: Int? = nil,
         lineItems: [[String: Any]]? = nil,
+        participantIds: [Int]? = nil,
+        guestParticipant: [String: Any]? = nil,
         completion: @escaping (Result<URL?, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
@@ -168,10 +170,15 @@ final class PaymentManager: NSObject {
                 }
                 // ** Add line_items if it's a ticket purchase and lineItems are provided **
                 if let lineItems = lineItems, !lineItems.isEmpty {
-                    payload["line_items"] = lineItems // This should be an array of dictionaries
-    //                   print("✅ [PaymentManager] Including line_items in payload for ticket: \(lineItems)")
+                    payload["line_items"] = lineItems
                 } else {
                     print("⚠️ [PaymentManager] line_items not provided or empty for ticket purchase type.")
+                }
+                if let participantIds = participantIds, !participantIds.isEmpty {
+                    payload["participant_ids"] = participantIds
+                }
+                if let guest = guestParticipant {
+                    payload["guest_participant"] = guest
                 }
 
             case "membership", "new_member":
