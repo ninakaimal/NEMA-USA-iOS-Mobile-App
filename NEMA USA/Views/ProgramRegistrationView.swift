@@ -51,6 +51,19 @@ class ProgramRegistrationViewModel: ObservableObject {
     var hasAnyParticipantSelection: Bool {
         !selectedParticipantIDs.isEmpty || guestPayload != nil
     }
+    var totalParticipantCount: Int {
+        let guestCount = guestPayload != nil ? 1 : 0
+        return selectedParticipantIDs.count + guestCount
+    }
+    func perParticipantAmount(for program: EventProgram, isMember: Bool) -> Double {
+        program.price(isMember: isMember)
+    }
+    func totalChargeAmount(for program: EventProgram, isMember: Bool) -> Double {
+        let participantCount = totalParticipantCount
+        guard participantCount > 0 else { return 0 }
+        let perParticipant = perParticipantAmount(for: program, isMember: isMember)
+        return perParticipant * Double(participantCount)
+    }
     func canSubmit(for program: EventProgram) -> Bool {
         guard hasAnyParticipantSelection && acceptedTerms else { return false }
         guard guestInputError == nil else { return false }
@@ -209,13 +222,22 @@ class ProgramRegistrationViewModel: ObservableObject {
         
         // Validate program pricing
         let isMember = currentUser.isMember
-        let amount = program.price(isMember: isMember)
+        let perParticipantAmount = program.price(isMember: isMember)
         
-        guard amount > 0 else {
+        guard perParticipantAmount > 0 else {
             paymentErrorMessage = "Invalid program pricing. Please contact support."
             showPaymentError = true
             return
         }
+        
+        let participantCount = totalParticipantCount
+        guard participantCount > 0 else {
+            paymentErrorMessage = "Select at least one participant before paying."
+            showPaymentError = true
+            return
+        }
+        
+        let totalAmount = perParticipantAmount * Double(participantCount)
         
         // Check for active internet connection (basic check)
         guard NetworkMonitor.shared.isConnected else {
@@ -227,7 +249,7 @@ class ProgramRegistrationViewModel: ObservableObject {
         isProcessingPayment = true
         
         PaymentManager.shared.createOrder(
-            amount: String(format: "%.2f", amount),
+            amount: String(format: "%.2f", totalAmount),
             eventTitle: "\(program.name) Registration",
             eventID: Int(event.id),
             email: email,
@@ -362,6 +384,8 @@ struct ProgramRegistrationView: View {
     @State private var hasAppeared = false
     @State private var isRefreshing = false
     @State private var showSuccessAlert = false
+    @State private var showPaymentConfirmation = false
+    @State private var pendingPaymentInfo: (name: String, email: String, phone: String)? = nil
     
     var body: some View {
         NavigationView {
@@ -506,6 +530,21 @@ struct ProgramRegistrationView: View {
                         refundPolicyHTML: program.refundPolicyHTML,
                         penaltyDetails: program.penaltyDetails
                     )
+                    
+                    if program.requiresPayment {
+                        Section(header: Text("Payment Summary")) {
+                            let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
+                            let participantCount = viewModel.totalParticipantCount
+                            let perParticipant = viewModel.perParticipantAmount(for: program, isMember: isMember)
+                            let totalAmount = viewModel.totalChargeAmount(for: program, isMember: isMember)
+                            ProgramPaymentSummaryView(
+                                participantCount: participantCount,
+                                perParticipantAmount: perParticipant,
+                                totalAmount: totalAmount,
+                                programName: program.name
+                            )
+                        }
+                    }
 
                     // Terms
                     Section {
@@ -529,13 +568,8 @@ struct ProgramRegistrationView: View {
                                     return
                                 }
                                 
-                                viewModel.initiatePayment(
-                                    for: program,
-                                    event: event,
-                                    memberName: memberNameText,
-                                    email: emailAddressText,
-                                    phone: phoneText
-                                )
+                                pendingPaymentInfo = (name: memberNameText, email: emailAddressText, phone: phoneText)
+                                showPaymentConfirmation = true
                             } else {
                                 Task { await viewModel.submitRegistration(for: event.id, program: program) }
                             }
@@ -552,8 +586,11 @@ struct ProgramRegistrationView: View {
                                         Text("Join Waitlist")
                                     } else if program.isPaidProgram { // Keep this for non-waitlist paid programs
                                         let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
-                                        let amount = program.price(isMember: isMember)
-                                        Text("Pay $\(String(format: "%.0f", amount)) & Register")
+                                        let perParticipant = program.price(isMember: isMember)
+                                        let selectedCount = viewModel.totalParticipantCount
+                                        let totalAmount = perParticipant * Double(max(selectedCount, 1))
+                                        let displayAmount = selectedCount > 0 ? totalAmount : perParticipant
+                                        Text("Pay $\(String(format: "%.2f", displayAmount)) & Register")
                                     } else {
                                         Text("Register") // For free, non-waitlist programs
                                     }
@@ -692,6 +729,32 @@ struct ProgramRegistrationView: View {
                         successMessage: "Registration payment completed successfully!"
                     )
                 }
+                .confirmationDialog(
+                    "Confirm Payment",
+                    isPresented: $showPaymentConfirmation,
+                    presenting: pendingPaymentInfo
+                ) { info in
+                    let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
+                    let totalAmount = viewModel.totalChargeAmount(for: program, isMember: isMember)
+                    Button("Pay \(formattedCurrency(totalAmount)) & Continue") {
+                        viewModel.initiatePayment(
+                            for: program,
+                            event: event,
+                            memberName: info.name,
+                            email: info.email,
+                            phone: info.phone
+                        )
+                        pendingPaymentInfo = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingPaymentInfo = nil
+                    }
+                } message: { _ in
+                    let isMember = DatabaseManager.shared.currentUser?.isMember ?? false
+                    let totalAmount = viewModel.totalChargeAmount(for: program, isMember: isMember)
+                    let count = viewModel.totalParticipantCount
+                    Text("You are registering \(count) participant\(count == 1 ? "" : "s") for \(program.name). Total charge: \(formattedCurrency(totalAmount)). Continue to PayPal?")
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .didReceiveJWT)) { _ in
@@ -713,6 +776,15 @@ struct ProgramRegistrationView: View {
             emailAddressText = user.email
             phoneText = user.phone
         }
+    }
+    
+    private func formattedCurrency(_ amount: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: amount)) ?? String(format: "$%.2f", amount)
     }
 }
 
@@ -771,6 +843,69 @@ struct TermsDisclosureView: View {
         }
     }
 }
+struct ProgramPaymentSummaryView: View {
+    let participantCount: Int
+    let perParticipantAmount: Double
+    let totalAmount: Double
+    let programName: String
+    
+    private var currencyFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter
+    }
+    
+    private var formattedPerParticipant: String {
+        guard perParticipantAmount > 0 else { return "Free" }
+        return currencyFormatter.string(from: NSNumber(value: perParticipantAmount)) ?? String(format: "$%.2f", perParticipantAmount)
+    }
+    
+    private var formattedTotal: String {
+        guard totalAmount > 0 else { return "Select participants" }
+        return currencyFormatter.string(from: NSNumber(value: totalAmount)) ?? String(format: "$%.2f", totalAmount)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Participants")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(participantCount > 0 ? "\(participantCount)" : "–")
+                    .font(.headline)
+            }
+            Divider()
+            HStack {
+                Text("Per Participant")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(formattedPerParticipant)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            Divider()
+            HStack {
+                Text("Total Due")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(formattedTotal)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundColor(totalAmount > 0 ? .primary : .secondary)
+            }
+            Text("Amount is calculated for \(participantCount > 0 ? "\(participantCount)" : "no") participant(s) selected for \(programName).")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 struct ProgramPoliciesCard: View {
     let instructionsHTML: String?
     let refundPolicyHTML: String?
@@ -778,7 +913,7 @@ struct ProgramPoliciesCard: View {
     let defaultInstructionBullets: [String]
     let defaultRefundBullets: [String]
 
-        var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             instructionsSection
             Divider()
