@@ -239,8 +239,8 @@ class ProgramRegistrationViewModel: ObservableObject {
             userId: currentUser.id,
             panthiId: nil,
             lineItems: nil,
-            participantIds: Array(viewModel.selectedParticipantIDs),
-            guestParticipant: viewModel.guestPayload
+            participantIds: Array(selectedParticipantIDs),
+            guestParticipant: guestPayload
         ) { result in
             DispatchQueue.main.async {
                 self.isProcessingPayment = false
