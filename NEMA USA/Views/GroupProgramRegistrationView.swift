@@ -83,9 +83,9 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         if let min = category.minAge, let max = category.maxAge {
             return "Ages \(min)-\(max)"
         } else if let min = category.minAge {
-            return "Age \u2265 \(min)"
+            return "Age ≥ \(min)"
         } else if let max = category.maxAge {
-            return "Age \u2264 \(max)"
+            return "Age ≤ \(max)"
         }
         return nil
     }
