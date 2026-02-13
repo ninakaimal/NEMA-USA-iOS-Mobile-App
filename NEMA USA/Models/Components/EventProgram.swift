@@ -26,6 +26,12 @@ struct EventProgram: Identifiable, Codable, Hashable {
     let paidMemberFee: Double?
     let penalty: Double?
     let currencyCode: String?
+    let regType: Int?
+    let minTeamSize: Int?
+    let maxTeamSize: Int?
+    let showGuruOption: Bool?
+    let showGroupNameOption: Bool?
+    let showAgeOption: Bool?
     
     enum CodingKeys: String, CodingKey {
         case id, name, time, categories, event
@@ -39,6 +45,18 @@ struct EventProgram: Identifiable, Codable, Hashable {
         case paidMemberFee = "paid_member_fee"
         case penalty = "penalty"
         case currencyCode = "currency_code"
+        case regType = "reg_type"
+        case minTeamSize = "min_team_size"
+        case maxTeamSize = "max_team_size"
+        case showGuruOption = "show_guru_option"
+        case showGroupNameOption = "show_group_name_option"
+        case showAgeOption = "show_age_option"
+    }
+    
+    var minTeamSizeValue: Int { max(1, minTeamSize ?? 1) }
+    var maxTeamSizeValue: Int { max(minTeamSizeValue, maxTeamSize ?? minTeamSizeValue) }
+    var isGroupProgram: Bool {
+        return maxTeamSizeValue > 1 || minTeamSizeValue > 1 || (regType ?? 0) == 2
     }
     
     // COMPUTED PROPERTIES FOR PRICING LOGIC
@@ -101,4 +119,12 @@ struct PenaltyDetails: Codable, Hashable {
 struct ProgramCategory: Identifiable, Codable, Hashable {
     let id: Int
     let name: String
+    let minAge: Int?
+    let maxAge: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case minAge = "min_age"
+        case maxAge = "max_age"
+    }
 }

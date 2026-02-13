@@ -1,3 +1,14 @@
+struct GroupProgramRegistrationResponse: Codable {
+    let success: String?
+    let amount: Double?
+    let waitList: Bool?
+    
+    enum CodingKeys: String, CodingKey {
+        case success, amount
+        case waitList = "wait_list"
+    }
+}
+
 //
 //  NetworkManager.swift
 //  NEMA USA
@@ -1274,6 +1285,88 @@ final class NetworkManager: NSObject {
         }
     }
     
+    func registerGroupProgram(
+        programId: String,
+        categoryId: Int,
+        participantNames: [String],
+        participantAges: [Any],
+        groupName: String?,
+        guruName: String?,
+        practiceLocationId: Int?,
+        contactName: String,
+        contactEmail: String,
+        contactPhone: String?,
+        comments: String?
+    ) async throws -> GroupProgramRegistrationResponse {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+
+        let url = baseURL.appendingPathComponent("v1/mobile/programs/\(programId)/group-register")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        var body: [String: Any] = [
+            "program_category_id": categoryId,
+            "names": participantNames,
+            "contact_name": contactName,
+            "contact_email": contactEmail
+        ]
+
+        if !participantAges.isEmpty {
+            body["ages"] = participantAges
+        }
+        if let groupName = groupName, !groupName.isEmpty {
+            body["group_name"] = groupName
+        }
+        if let guruName = guruName, !guruName.isEmpty {
+            body["guru"] = guruName
+        }
+        if let practiceLocationId = practiceLocationId {
+            body["practice_location_id"] = practiceLocationId
+        }
+        if let contactPhone = contactPhone, !contactPhone.isEmpty {
+            body["contact_phone"] = contactPhone
+        }
+        if let comments = comments, !comments.isEmpty {
+            body["comments"] = comments
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("🚀 [NetworkManager] registerGroupProgram: POST \(url.absoluteString)")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            DatabaseManager.shared.clearSession()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            }
+            throw NetworkError.serverError("Authentication expired. Please log in again.")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
+            print("❌ [NetworkManager] registerGroupProgram: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Registration failed: \(errorBody)")
+        }
+
+        do {
+            return try iso8601JSONDecoder.decode(GroupProgramRegistrationResponse.self, from: data)
+        } catch {
+            print("❌ [NetworkManager] registerGroupProgram: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+
     func getEligibleParticipants(forProgramId programId: String) async throws -> [FamilyMember] {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
             print("❌ [NetworkManager] getEligibleParticipants: JWT token is NIL. Throwing unauthenticated error.")

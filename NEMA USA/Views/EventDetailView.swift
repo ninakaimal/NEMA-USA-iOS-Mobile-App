@@ -778,8 +778,11 @@ struct EventDetailView: View {
             }
         }
         .sheet(item: $programToRegister) { program in
-            // This now gets triggered correctly after the login sheet is dismissed.
-            ProgramRegistrationView(event: event, program: program)
+            if program.isGroupProgram {
+                GroupProgramRegistrationView(event: event, program: program)
+            } else {
+                ProgramRegistrationView(event: event, program: program)
+            }
         }
     }
     
