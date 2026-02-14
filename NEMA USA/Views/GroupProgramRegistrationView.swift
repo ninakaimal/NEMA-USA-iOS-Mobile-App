@@ -332,6 +332,8 @@ struct GroupProgramRegistrationView: View {
                         set: { viewModel.participantEntries[index].name = $0 }
                     ))
                     .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
                     if let nameError = viewModel.nameValidationError(for: viewModel.participantEntries[index]) {
                         Text(nameError)
                             .font(.caption2)
@@ -361,10 +363,14 @@ struct GroupProgramRegistrationView: View {
             if viewModel.requiresGroupName {
                 TextField("Group Name", text: $viewModel.groupName)
                     .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
             }
             if viewModel.requiresGuru {
                 TextField("Guru / Choreographer", text: $viewModel.guruName)
                     .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
             }
         }
     }
