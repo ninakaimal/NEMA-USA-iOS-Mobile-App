@@ -17,7 +17,9 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
     let event: Event
     let program: EventProgram
     
-    @Published var selectedCategory: ProgramCategory?
+    @Published var registrationInfo: GroupRegistrationInfo?
+    @Published var selectedCategory: GroupRegistrationCategory?
+    @Published var categories: [GroupRegistrationCategory] = []
     @Published var participantEntries: [GroupParticipantEntry]
     @Published var participantCount: Int
     @Published var participantCountText: String
@@ -33,6 +35,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var successMessage: String?
     @Published var showSuccessAlert: Bool = false
+    @Published var isLoadingInfo: Bool = false
     
     private let networkManager = NetworkManager.shared
     
@@ -43,7 +46,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         self.participantCount = max(initialCount, 1)
         self.participantCountText = String(max(initialCount, 1))
         self.participantEntries = Array(repeating: GroupParticipantEntry(), count: max(initialCount, 1))
-        self.selectedCategory = program.categories.first
+        self.selectedCategory = nil
         if let user = DatabaseManager.shared.currentUser {
             self.contactName = user.name
             self.contactEmail = user.email
@@ -51,14 +54,27 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         }
     }
     
-    var minParticipants: Int { program.minTeamSizeValue }
-    var maxParticipants: Int { program.maxTeamSizeValue }
-    var showAgeFields: Bool { program.showAgeOption ?? true }
-    var requiresGroupName: Bool { program.showGroupNameOption ?? false }
-    var requiresGuru: Bool { program.showGuruOption ?? false }
-    var requiresPracticeLocation: Bool { (program.practiceLocations?.isEmpty == false) }
+    var minParticipants: Int { registrationInfo?.minTeamSize ?? program.minTeamSizeValue }
+    var maxParticipants: Int { registrationInfo?.maxTeamSize ?? program.maxTeamSizeValue }
+    var showAgeFields: Bool { registrationInfo?.showAgeOption ?? program.showAgeOption ?? true }
+    var requiresGroupName: Bool { registrationInfo?.showGroupNameOption ?? program.showGroupNameOption ?? false }
+    var requiresGuru: Bool { registrationInfo?.showGuruOption ?? program.showGuruOption ?? false }
+    var requiresPracticeLocation: Bool {
+        if let info = registrationInfo {
+            return info.practiceLocations?.isEmpty == false
+        }
+        return program.practiceLocations?.isEmpty == false
+    }
     var isMember: Bool { DatabaseManager.shared.currentUser?.isMember ?? false }
-    var perParticipantAmount: Double { program.price(isMember: isMember) }
+    var perParticipantAmount: Double {
+        if program.isWaitlistProgram { return 0 }
+        if let info = registrationInfo {
+            let memberFee = info.paidMemberFee ?? info.othersFee ?? 0
+            let nonMemberFee = info.othersFee ?? info.paidMemberFee ?? 0
+            return isMember ? memberFee : nonMemberFee
+        }
+        return program.price(isMember: isMember)
+    }
     var totalAmount: Double { perParticipantAmount * Double(participantCount) }
     
     func applyParticipantCount() {
@@ -75,6 +91,35 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
             participantEntries.append(contentsOf: Array(repeating: GroupParticipantEntry(), count: difference))
         } else if participantEntries.count > newValue {
             participantEntries = Array(participantEntries.prefix(newValue))
+        }
+    }
+    
+    func loadRegistrationInfoIfNeeded() async {
+        if registrationInfo != nil || isLoadingInfo { return }
+        await loadRegistrationInfo()
+    }
+    
+    private func loadRegistrationInfo() async {
+        isLoadingInfo = true
+        defer { isLoadingInfo = false }
+        do {
+            let info = try await networkManager.fetchGroupRegistrationInfo(programId: program.id)
+            registrationInfo = info
+            categories = info.categories
+            selectedCategory = info.categories.first
+            let initialCount = max(info.minTeamSize, 1)
+            participantCount = initialCount
+            participantCountText = String(initialCount)
+            participantEntries = Array(repeating: GroupParticipantEntry(), count: initialCount)
+            if info.practiceLocations?.isEmpty == false {
+                if selectedPracticeLocationId == nil {
+                    selectedPracticeLocationId = info.practiceLocations?.first?.id
+                }
+            } else {
+                selectedPracticeLocationId = nil
+            }
+        } catch {
+            errorMessage = "Failed to load registration info: \(error.localizedDescription)"
         }
     }
     
@@ -127,7 +172,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         } else if !contactEmail.isValidEmail {
             issues.append("Enter a valid email address")
         }
-        if program.requiresPayment && contactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if perParticipantAmount > 0 && contactPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append("Contact phone is required")
         }
         for (index, entry) in participantEntries.enumerated() {
@@ -149,6 +194,10 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
     }
     
     func submit() async {
+        guard registrationInfo != nil else {
+            errorMessage = "Registration info is still loading. Please try again."
+            return
+        }
         guard let category = selectedCategory else {
             errorMessage = "Please select a category."
             return
@@ -159,16 +208,12 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         }
         isSubmitting = true
         errorMessage = nil
-        let trimmedNames = participantEntries.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let agesPayload: [Any]
-        if showAgeFields {
-            agesPayload = participantEntries.map { entry in
-                let trimmed = entry.ageText.trimmingCharacters(in: .whitespacesAndNewlines)
-                return Int(trimmed) ?? NSNull()
-            }
-        } else {
-            agesPayload = []
-        }
+        let activeEntries = Array(participantEntries.prefix(participantCount))
+        let trimmedNames = activeEntries.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let agesPayload: [Int]? = showAgeFields ? activeEntries.map { entry in
+            let trimmed = entry.ageText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return Int(trimmed) ?? 0
+        } : nil
         do {
             let response = try await networkManager.registerGroupProgram(
                 programId: program.id,
@@ -208,7 +253,12 @@ struct GroupProgramRegistrationView: View {
     
     var body: some View {
         NavigationView {
-            Form {
+            Group {
+                if viewModel.isLoadingInfo && viewModel.registrationInfo == nil {
+                    ProgressView("Loading registration info…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                } else {
+                    Form {
                 programHeaderSection
                 categorySection
                 participantCountSection
@@ -225,7 +275,7 @@ struct GroupProgramRegistrationView: View {
                 Section {
                     Toggle("I accept rules, guidelines and waiver for this program", isOn: $viewModel.acceptedTerms)
                 }
-                if program.requiresPayment {
+                if viewModel.perParticipantAmount > 0 {
                     Section(header: Text("Payment Summary")) {
                         ProgramPaymentSummaryView(
                             participantCount: viewModel.participantCount,
@@ -236,6 +286,8 @@ struct GroupProgramRegistrationView: View {
                     }
                 }
                 submitSection
+            }
+                }
             }
             .navigationTitle(program.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -264,6 +316,9 @@ struct GroupProgramRegistrationView: View {
                 Text(viewModel.errorMessage ?? "An error occurred.")
             }
         }
+        .task {
+            await viewModel.loadRegistrationInfoIfNeeded()
+        }
     }
     
     private var programHeaderSection: some View {
@@ -290,10 +345,16 @@ struct GroupProgramRegistrationView: View {
     private var categorySection: some View {
         Section(header: Text("Select Category")) {
             Picker("Category", selection: $viewModel.selectedCategory) {
-                Text("Select a category").tag(Optional<ProgramCategory>.none)
-                ForEach(program.categories, id: \.id) { category in
+                Text("Select a category").tag(Optional<GroupRegistrationCategory>.none)
+                ForEach(viewModel.categories) { category in
                     Text(category.name).tag(Optional(category))
                 }
+            }
+            .disabled(viewModel.categories.isEmpty)
+            if viewModel.categories.isEmpty {
+                Text("No categories available for this program.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             if let rangeDescription = viewModel.ageRangeDescription() {
                 Text(rangeDescription)
@@ -322,7 +383,7 @@ struct GroupProgramRegistrationView: View {
     
     private var participantsSection: some View {
         Section(header: Text("Participants")) {
-            ForEach(viewModel.participantEntries.indices, id: \ .self) { index in
+            ForEach(viewModel.participantEntries.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Participant #\(index + 1)")
                         .font(.subheadline)
@@ -390,11 +451,20 @@ struct GroupProgramRegistrationView: View {
     
     @ViewBuilder
     private var practiceLocationSection: some View {
-        if let locations = program.practiceLocations, !locations.isEmpty {
+        if let locations = viewModel.registrationInfo?.practiceLocations, !locations.isEmpty {
             Section(header: Text("Select Practice Location")) {
                 Picker("Practice Location", selection: $viewModel.selectedPracticeLocationId) {
                     Text("Select a location").tag(Optional<Int>.none)
                     ForEach(locations) { location in
+                        Text(location.location).tag(Optional(location.id))
+                    }
+                }
+            }
+        } else if let legacyLocations = program.practiceLocations, !legacyLocations.isEmpty {
+            Section(header: Text("Select Practice Location")) {
+                Picker("Practice Location", selection: $viewModel.selectedPracticeLocationId) {
+                    Text("Select a location").tag(Optional<Int>.none)
+                    ForEach(legacyLocations) { location in
                         Text(location.location).tag(Optional(location.id))
                     }
                 }

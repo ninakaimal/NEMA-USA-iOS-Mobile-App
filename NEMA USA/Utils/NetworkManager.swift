@@ -9,6 +9,46 @@ struct GroupProgramRegistrationResponse: Codable {
     }
 }
 
+struct GroupRegistrationInfo: Codable, Hashable {
+    let id: String
+    let name: String
+    let minTeamSize: Int
+    let maxTeamSize: Int
+    let showGuruOption: Bool
+    let showGroupNameOption: Bool
+    let showAgeOption: Bool
+    let practiceLocations: [PracticeLocation]?
+    let categories: [GroupRegistrationCategory]
+    let othersFee: Double?
+    let paidMemberFee: Double?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case minTeamSize = "min_team_size"
+        case maxTeamSize = "max_team_size"
+        case showGuruOption = "show_guru_option"
+        case showGroupNameOption = "show_group_name_option"
+        case showAgeOption = "show_age_option"
+        case practiceLocations = "practice_locations"
+        case categories
+        case othersFee = "others_fee"
+        case paidMemberFee = "paid_member_fee"
+    }
+}
+
+struct GroupRegistrationCategory: Identifiable, Codable, Hashable {
+    let id: Int
+    let name: String
+    let minAge: Int?
+    let maxAge: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case minAge = "min_age"
+        case maxAge = "max_age"
+    }
+}
+
 //
 //  NetworkManager.swift
 //  NEMA USA
@@ -1289,7 +1329,7 @@ final class NetworkManager: NSObject {
         programId: String,
         categoryId: Int,
         participantNames: [String],
-        participantAges: [Any],
+        participantAges: [Int]?,
         groupName: String?,
         guruName: String?,
         practiceLocationId: Int?,
@@ -1316,7 +1356,7 @@ final class NetworkManager: NSObject {
             "contact_email": contactEmail
         ]
 
-        if !participantAges.isEmpty {
+        if let participantAges = participantAges {
             body["ages"] = participantAges
         }
         if let groupName = groupName, !groupName.isEmpty {
@@ -1363,6 +1403,45 @@ final class NetworkManager: NSObject {
             return try iso8601JSONDecoder.decode(GroupProgramRegistrationResponse.self, from: data)
         } catch {
             print("❌ [NetworkManager] registerGroupProgram: Decoding failed: \(error)")
+            throw NetworkError.decodingError(error)
+        }
+    }
+
+    func fetchGroupRegistrationInfo(programId: String) async throws -> GroupRegistrationInfo {
+        guard let jwt = DatabaseManager.shared.jwtApiToken else {
+            throw NetworkError.serverError("User not authenticated.")
+        }
+
+        let url = baseURL.appendingPathComponent("v1/mobile/programs/\(programId)/group-registration-info")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            DatabaseManager.shared.clearSession()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .didSessionExpire, object: nil)
+            }
+            throw NetworkError.serverError("Authentication expired. Please log in again.")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "No response body"
+            print("❌ [NetworkManager] fetchGroupRegistrationInfo: HTTP Error \(httpResponse.statusCode). Body: \(errorBody)")
+            throw NetworkError.serverError("Failed to load registration info.")
+        }
+
+        do {
+            return try iso8601JSONDecoder.decode(GroupRegistrationInfo.self, from: data)
+        } catch {
+            print("❌ [NetworkManager] fetchGroupRegistrationInfo: Decoding failed: \(error)")
             throw NetworkError.decodingError(error)
         }
     }
