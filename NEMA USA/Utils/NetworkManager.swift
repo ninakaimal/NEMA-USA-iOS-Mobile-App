@@ -9,6 +9,30 @@ struct GroupProgramRegistrationResponse: Codable {
         case waitList = "wait_list"
         case participantId = "participant_id"
     }
+    
+    init(success: String? = nil, amount: Double? = nil, waitList: Bool? = nil, participantId: Int? = nil) {
+        self.success = success
+        self.amount = amount
+        self.waitList = waitList
+        self.participantId = participantId
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeIfPresent(String.self, forKey: .success)
+        amount = try container.decodeIfPresent(Double.self, forKey: .amount)
+        waitList = try container.decodeIfPresent(Bool.self, forKey: .waitList)
+        
+        if let intValue = try container.decodeIfPresent(Int.self, forKey: .participantId) {
+            participantId = intValue
+        } else if let stringValue = try container.decodeIfPresent(String.self, forKey: .participantId), let parsed = Int(stringValue) {
+            participantId = parsed
+        } else if let doubleValue = try container.decodeIfPresent(Double.self, forKey: .participantId) {
+            participantId = Int(doubleValue)
+        } else {
+            participantId = nil
+        }
+    }
 }
 
 struct GroupRegistrationInfo: Codable, Hashable {
