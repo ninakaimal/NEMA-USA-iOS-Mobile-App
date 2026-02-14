@@ -2,10 +2,12 @@ struct GroupProgramRegistrationResponse: Codable {
     let success: String?
     let amount: Double?
     let waitList: Bool?
+    let participantId: Int?
     
     enum CodingKeys: String, CodingKey {
         case success, amount
         case waitList = "wait_list"
+        case participantId = "participant_id"
     }
 }
 

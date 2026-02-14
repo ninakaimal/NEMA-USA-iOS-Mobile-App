@@ -16,7 +16,7 @@ struct GroupParticipantEntry: Identifiable, Equatable {
 final class GroupProgramRegistrationViewModel: ObservableObject {
     let event: Event
     let program: EventProgram
-    
+
     @Published var registrationInfo: GroupRegistrationInfo?
     @Published var selectedCategory: GroupRegistrationCategory?
     @Published var categories: [GroupRegistrationCategory] = []
@@ -36,9 +36,17 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
     @Published var successMessage: String?
     @Published var showSuccessAlert: Bool = false
     @Published var isLoadingInfo: Bool = false
-    
+
+    // Payment state (mirrors single registration flow)
+    @Published var isProcessingPayment: Bool = false
+    @Published var paymentErrorMessage: String = ""
+    @Published var showPaymentError: Bool = false
+    @Published var showPurchaseSuccess: Bool = false
+    @Published var approvalURL: URL? = nil
+    @Published var paymentConfirmationData: PaymentConfirmationResponse? = nil
+
     private let networkManager = NetworkManager.shared
-    
+
     init(event: Event, program: EventProgram) {
         self.event = event
         self.program = program
@@ -53,7 +61,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
             self.contactPhone = user.phone
         }
     }
-    
+
     var minParticipants: Int { registrationInfo?.minTeamSize ?? program.minTeamSizeValue }
     var maxParticipants: Int { registrationInfo?.maxTeamSize ?? program.maxTeamSizeValue }
     var showAgeFields: Bool { registrationInfo?.showAgeOption ?? program.showAgeOption ?? true }
@@ -76,13 +84,13 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         return program.price(isMember: isMember)
     }
     var totalAmount: Double { perParticipantAmount * Double(participantCount) }
-    
+
     func applyParticipantCount() {
         let desired = Int(participantCountText) ?? minParticipants
         let clamped = min(max(desired, minParticipants), maxParticipants)
         updateParticipantCount(to: clamped)
     }
-    
+
     func updateParticipantCount(to newValue: Int) {
         participantCount = newValue
         participantCountText = String(newValue)
@@ -93,12 +101,12 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
             participantEntries = Array(participantEntries.prefix(newValue))
         }
     }
-    
+
     func loadRegistrationInfoIfNeeded() async {
         if registrationInfo != nil || isLoadingInfo { return }
         await loadRegistrationInfo()
     }
-    
+
     private func loadRegistrationInfo() async {
         isLoadingInfo = true
         defer { isLoadingInfo = false }
@@ -122,7 +130,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
             errorMessage = "Failed to load registration info: \(error.localizedDescription)"
         }
     }
-    
+
     func ageRangeDescription() -> String? {
         guard let category = selectedCategory else { return nil }
         if let min = category.minAge, let max = category.maxAge {
@@ -134,7 +142,7 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         }
         return nil
     }
-    
+
     func ageValidationError(for entry: GroupParticipantEntry) -> String? {
         guard showAgeFields else { return nil }
         guard let category = selectedCategory else { return "Select a category to validate age." }
@@ -145,11 +153,11 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         if let max = category.maxAge, value > max { return "Maximum age is \(max)" }
         return nil
     }
-    
+
     func nameValidationError(for entry: GroupParticipantEntry) -> String? {
         return entry.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Name required" : nil
     }
-    
+
     func validationIssues() -> [String] {
         var issues: [String] = []
         if selectedCategory == nil {
@@ -188,11 +196,11 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
         }
         return issues
     }
-    
+
     var canSubmit: Bool {
-        return validationIssues().isEmpty && !isSubmitting
+        return validationIssues().isEmpty && !isSubmitting && !isProcessingPayment
     }
-    
+
     func submit() async {
         guard registrationInfo != nil else {
             errorMessage = "Registration info is still loading. Please try again."
@@ -228,8 +236,12 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
                 contactPhone: contactPhone.trimmingCharacters(in: .whitespacesAndNewlines),
                 comments: comments.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            successMessage = response.success ?? "Registration submitted successfully."
-            showSuccessAlert = true
+            if perParticipantAmount > 0, let participantId = response.participantId {
+                startPaymentFlow(participantId: participantId)
+            } else {
+                successMessage = response.success ?? "Registration submitted successfully."
+                showSuccessAlert = true
+            }
         } catch let error as NetworkError {
             errorMessage = "Registration failed: \(error.localizedDescription)"
         } catch {
@@ -239,18 +251,90 @@ final class GroupProgramRegistrationViewModel: ObservableObject {
     }
 }
 
+    private func startPaymentFlow(participantId: Int) {
+        guard perParticipantAmount > 0 else {
+            successMessage = "Registration submitted successfully."
+            showSuccessAlert = true
+            return
+        }
+        let totalAmountString = String(format: "%.2f", totalAmount)
+        let trimmedEmail = contactEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPhone = contactPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        isProcessingPayment = true
+        PaymentManager.shared.createOrder(
+            amount: totalAmountString,
+            eventTitle: "\(program.name) Registration",
+            eventID: nil,
+            email: trimmedEmail,
+            name: trimmedName,
+            phone: trimmedPhone,
+            membershipType: nil,
+            packageId: nil,
+            packageYears: nil,
+            userId: nil,
+            panthiId: nil,
+            lineItems: nil,
+            participantIds: nil,
+            guestParticipant: nil,
+            paymentTypeOverride: "group",
+            groupParticipantId: participantId,
+            groupProgramId: Int(program.id),
+            completion: { [weak self] result in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.isProcessingPayment = false
+                    switch result {
+                    case .success(let url):
+                        if let approvalURL = url {
+                            self.approvalURL = approvalURL
+                        } else {
+                            self.successMessage = "Registration submitted successfully."
+                            self.showSuccessAlert = true
+                        }
+                    case .failure(let error):
+                        switch error {
+                        case .serverError(let message):
+                            self.paymentErrorMessage = message
+                        default:
+                            self.paymentErrorMessage = error.localizedDescription
+                        }
+                        self.showPaymentError = true
+                    }
+                }
+            }
+        )
+    }
+
+    func resetPaymentState() {
+        approvalURL = nil
+        paymentConfirmationData = nil
+        isProcessingPayment = false
+        paymentErrorMessage = ""
+        showPaymentError = false
+        showPurchaseSuccess = false
+    }
+    
+    func cleanup() {
+        resetPaymentState()
+        isSubmitting = false
+        showSuccessAlert = false
+    }
+
 struct GroupProgramRegistrationView: View {
     let event: Event
     let program: EventProgram
     @Environment(\.presentationMode) private var presentationMode
     @StateObject private var viewModel: GroupProgramRegistrationViewModel
-    
+    @State private var showPaymentConfirmation = false
+    @State private var pendingPaymentInfo: (name: String, email: String, phone: String)? = nil
+
     init(event: Event, program: EventProgram) {
         self.event = event
         self.program = program
         _viewModel = StateObject(wrappedValue: GroupProgramRegistrationViewModel(event: event, program: program))
     }
-    
+
     var body: some View {
         NavigationView {
             Group {
@@ -302,6 +386,7 @@ struct GroupProgramRegistrationView: View {
                 set: { viewModel.showSuccessAlert = $0 }
             )) {
                 Button("OK") {
+                    viewModel.cleanup()
                     presentationMode.wrappedValue.dismiss()
                 }
             } message: {
@@ -315,12 +400,71 @@ struct GroupProgramRegistrationView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "An error occurred.")
             }
+            .alert("Payment Error", isPresented: $viewModel.showPaymentError) {
+                Button("OK", role: .cancel) {
+                    viewModel.resetPaymentState()
+                }
+            } message: {
+                Text(viewModel.paymentErrorMessage)
+            }
+            .alert("Payment Successful!", isPresented: $viewModel.showPurchaseSuccess) {
+                Button("OK") {
+                    viewModel.cleanup()
+                    presentationMode.wrappedValue.dismiss()
+                }
+            } message: {
+                Text("Your payment has been processed and registration is complete!")
+            }
+            .sheet(item: $viewModel.approvalURL, onDismiss: {
+                if !viewModel.showPurchaseSuccess {
+                    viewModel.resetPaymentState()
+                }
+            }) { url in
+                PayPalView(
+                    approvalURL: url,
+                    showPaymentError: $viewModel.showPaymentError,
+                    paymentErrorMessage: $viewModel.paymentErrorMessage,
+                    showPurchaseSuccess: $viewModel.showPurchaseSuccess,
+                    paymentConfirmationData: $viewModel.paymentConfirmationData,
+                    comments: "\(program.name) Registration",
+                    successMessage: "Registration payment completed successfully!"
+                )
+            }
+            .confirmationDialog(
+                "Confirm Payment",
+                isPresented: $showPaymentConfirmation,
+                presenting: pendingPaymentInfo
+            ) { _ in
+                Button("Pay \(formattedCurrency(viewModel.totalAmount)) & Continue") {
+                    showPaymentConfirmation = false
+                    Task { await viewModel.submit() }
+                    pendingPaymentInfo = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    showPaymentConfirmation = false
+                    pendingPaymentInfo = nil
+                }
+            } message: { _ in
+                let count = viewModel.participantCount
+                Text("You are registering \(count) participant\(count == 1 ? "" : "s") for \(program.name). Total charge: \(formattedCurrency(viewModel.totalAmount)). Continue to PayPal?")
+            }
         }
         .task {
             await viewModel.loadRegistrationInfoIfNeeded()
         }
+        .onDisappear {
+            viewModel.resetPaymentState()
+        }
     }
-    
+
+    private var submitButtonTitle: String {
+        if viewModel.perParticipantAmount > 0 {
+            return "Pay \(formattedCurrency(viewModel.totalAmount)) & Register"
+        } else {
+            return "Submit Registration"
+        }
+    }
+
     private var programHeaderSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
@@ -341,7 +485,7 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-    
+
     private var categorySection: some View {
         Section(header: Text("Select Category")) {
             Picker("Category", selection: $viewModel.selectedCategory) {
@@ -363,7 +507,7 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-    
+
     private var participantCountSection: some View {
         Section(header: Text("Enter Number of Participants (Min: \(viewModel.minParticipants) | Max: \(viewModel.maxParticipants))")) {
             HStack {
@@ -380,7 +524,7 @@ struct GroupProgramRegistrationView: View {
                 .foregroundColor(.secondary)
         }
     }
-    
+
     private var participantsSection: some View {
         Section(header: Text("Participants")) {
             ForEach(viewModel.participantEntries.indices, id: \.self) { index in
@@ -417,7 +561,7 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var optionalDetailsSection: some View {
         Section(header: Text("Group Details")) {
@@ -435,7 +579,7 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-    
+
     private var contactSection: some View {
         Section(header: Text("Contact Information")) {
             TextField("Contact Person", text: $viewModel.contactName)
@@ -448,7 +592,7 @@ struct GroupProgramRegistrationView: View {
                 .textFieldStyle(.roundedBorder)
         }
     }
-    
+
     @ViewBuilder
     private var practiceLocationSection: some View {
         if let locations = viewModel.registrationInfo?.practiceLocations, !locations.isEmpty {
@@ -471,26 +615,39 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-    
+
     private var commentsSection: some View {
         Section(header: Text("Comments (Optional)")) {
             TextEditor(text: $viewModel.comments)
                 .frame(height: 80)
         }
     }
-    
+
     private var submitSection: some View {
         Section {
             Button(action: {
-                Task { await viewModel.submit() }
+                if viewModel.perParticipantAmount > 0 {
+                    pendingPaymentInfo = (
+                        viewModel.contactName.trimmingCharacters(in: .whitespacesAndNewlines),
+                        viewModel.contactEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+                        viewModel.contactPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                    showPaymentConfirmation = true
+                } else {
+                    Task { await viewModel.submit() }
+                }
             }) {
                 HStack {
                     Spacer()
-                    if viewModel.isSubmitting {
+                    if viewModel.isSubmitting || viewModel.isProcessingPayment {
                         ProgressView().tint(.white)
+                        Text(viewModel.isProcessingPayment ? "Opening PayPal..." : "Submitting...")
+                            .fontWeight(.semibold)
+                            .padding(.leading, 8)
+                    } else {
+                        Text(submitButtonTitle)
+                            .fontWeight(.semibold)
                     }
-                    Text(viewModel.isSubmitting ? "Submitting..." : "Submit Registration")
-                        .fontWeight(.semibold)
                     Spacer()
                 }
             }
@@ -515,5 +672,13 @@ struct GroupProgramRegistrationView: View {
             }
         }
     }
-}
 
+    private func formattedCurrency(_ amount: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: amount)) ?? String(format: "$%.2f", amount)
+    }
+}
