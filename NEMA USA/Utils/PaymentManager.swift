@@ -96,6 +96,9 @@ final class PaymentManager: NSObject {
         lineItems: [[String: Any]]? = nil,
         participantIds: [Int]? = nil,
         guestParticipant: [String: Any]? = nil,
+        paymentTypeOverride: String? = nil,
+        groupParticipantId: Int? = nil,
+        groupProgramId: Int? = nil,
         completion: @escaping (Result<URL?, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
@@ -127,7 +130,9 @@ final class PaymentManager: NSObject {
 
             // Explicit logic to determine the correct 'type'
             var paymentTypeDetermined: String
-            if let explicitMembershipType = membershipType, ["membership", "new_member", "renew"].contains(explicitMembershipType.lowercased()) {
+            if let forcedType = paymentTypeOverride?.lowercased() {
+                paymentTypeDetermined = forcedType
+            } else if let explicitMembershipType = membershipType, ["membership", "new_member", "renew"].contains(explicitMembershipType.lowercased()) {
                 paymentTypeDetermined = explicitMembershipType.lowercased()
             } else if eventID != nil {
                 paymentTypeDetermined = "ticket"
@@ -179,6 +184,16 @@ final class PaymentManager: NSObject {
                 }
                 if let guest = guestParticipant {
                     payload["guest_participant"] = guest
+                }
+
+            case "group":
+                if let programId = groupProgramId {
+                    payload["event_id"] = programId
+                }
+                if let groupParticipantId = groupParticipantId {
+                    payload["id"] = groupParticipantId
+                } else {
+                    print("⚠️ [PaymentManager] Group payment missing participant ID")
                 }
 
             case "membership", "new_member":
