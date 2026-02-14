@@ -322,7 +322,7 @@ struct GroupProgramRegistrationView: View {
     
     private var participantsSection: some View {
         Section(header: Text("Participants")) {
-            ForEach(Array(viewModel.participantEntries.enumerated()), id: \ .element.id) { index, entry in
+            ForEach(viewModel.participantEntries.indices, id: \ .self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Participant #\(index + 1)")
                         .font(.subheadline)
