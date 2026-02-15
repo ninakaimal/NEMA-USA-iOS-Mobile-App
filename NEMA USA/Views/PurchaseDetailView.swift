@@ -39,7 +39,7 @@ struct PurchaseDetailView: View {
 
                             // Withdrawal Button - Only show for eligible statuses
                             if let detail = viewModel.programDetail,
-                               !["cancelled", "withdrawn", "rejected", "failed"].contains(detail.regStatus.lowercased()) {
+                               shouldShowWithdrawButton(for: detail) {
 
                                 Button(action: {
                                     // Prepare confirmation message data
@@ -130,6 +130,19 @@ struct PurchaseDetailView: View {
             }
             showWithdrawSuccess = true
         }
+    }
+
+    private var isEventInPast: Bool {
+        guard let eventDate = record.eventDate else { return false }
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        return eventDate < startOfToday
+    }
+
+    private func shouldShowWithdrawButton(for detail: Participant) -> Bool {
+        guard !["cancelled", "withdrawn", "rejected", "failed"].contains(detail.regStatus.lowercased()) else {
+            return false
+        }
+        return !isEventInPast
     }
 }
 
