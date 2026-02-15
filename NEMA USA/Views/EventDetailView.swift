@@ -306,12 +306,18 @@ fileprivate struct EventProgramRowView: View {
     @Binding var programToRegister: EventProgram?
     @Binding var showLoginSheet: Bool
     @State private var isExpanded = false
+    @State private var showingRulesSheet = false
+
+    private var hasRulesContent: Bool {
+        let content = (program.rulesAndGuidelines ?? program.instructionsHTML ?? "")
+        return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Program Title, Time, and Categories
-            HStack {
-                VStack(alignment: .leading) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(program.name).font(.headline.weight(.medium))
                     if let time = program.time, !time.isEmpty {
                         Text(time).font(.caption).foregroundColor(.secondary)
@@ -328,35 +334,38 @@ fileprivate struct EventProgramRowView: View {
                 }
 
                 Spacer()
-                // Registration Status
-                Button(action: {
-                    // First, set which program the user intends to register for.
-                    self.programToRegister = program
-                    // Now, check if the user is logged in.
-                    if DatabaseManager.shared.jwtApiToken == nil {
-                        // If not logged in, show the login sheet.
-                        // After login, the .onReceive modifier will handle the rest.
-                        self.showLoginSheet = true
+                VStack(alignment: .trailing, spacing: 8) {
+                    if hasRulesContent {
+                        Button(action: { showingRulesSheet = true }) {
+                            Label("Rules", systemImage: "doc.text")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(Color.orange.opacity(0.15))
+                                .foregroundColor(.orange)
+                                .clipShape(Capsule())
+                        }
                     }
-                    
-                }) {
-                    Text(program.registrationStatus ?? "N/A")
-                        .font(.caption.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(
-                            (program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist") ? Color.orange : Color.gray
-                        )
-                        .clipShape(Capsule())
+
+                    Button(action: {
+                        self.programToRegister = program
+                        if DatabaseManager.shared.jwtApiToken == nil {
+                            self.showLoginSheet = true
+                        }
+                    }) {
+                        Text(program.registrationStatus ?? "N/A")
+                            .font(.caption.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background((program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist") ? Color.orange : Color.gray)
+                            .clipShape(Capsule())
+                    }
+                    .disabled(!(program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist"))
                 }
-                .disabled(!(program.registrationStatus == "Click to Register" || program.registrationStatus == "Join Waitlist"))
             }
 
             // Rules and Guidelines expander
             if let rules = program.rulesAndGuidelines, !rules.isEmpty {
-                Button(action: {
-                    withAnimation { isExpanded.toggle() }
-                }) {
+                Button(action: { withAnimation { isExpanded.toggle() } }) {
                     HStack {
                         Text("Rules and Guidelines")
                         Spacer()
@@ -376,6 +385,36 @@ fileprivate struct EventProgramRowView: View {
             }
         }
         .padding(.vertical, 8)
+        .sheet(isPresented: $showingRulesSheet) {
+            RulesGuidelinesSheetView(
+                title: program.name,
+                htmlContent: program.rulesAndGuidelines ?? program.instructionsHTML ?? "No rules available."
+            )
+        }
+    }
+}
+
+
+struct RulesGuidelinesSheetView: View {
+    let title: String
+    let htmlContent: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                HTMLRichText(html: htmlContent)
+                    .padding(.top, 8)
+            }
+            .padding()
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
     }
 }
 
