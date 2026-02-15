@@ -150,37 +150,38 @@ fileprivate struct EventImageView: View {
     let placeholderImageName = "DefaultEventImage"
 
     var body: some View {
-        if let imageUrlString = imageUrlString, let imageURL = URL(string: imageUrlString) {
-            KFImage(imageURL)
-                .downsampling(size: CGSize(width: 1200, height: 1200))
-                .placeholder {
-                    Image(placeholderImageName)
+        GeometryReader { geometry in
+            Group {
+                if let imageUrlString = imageUrlString, let imageURL = URL(string: imageUrlString) {
+                    KFImage(imageURL)
+                        .downsampling(size: CGSize(width: 1200, height: 1200))
+                        .placeholder {
+                            placeholderView(size: geometry.size)
+                        }
+                        .scaleFactor(UIScreen.main.scale)
+                        .fade(duration: 0.25)
                         .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                        .background(Color.gray.opacity(0.1))
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                         .cornerRadius(12)
+                } else {
+                    placeholderView(size: geometry.size)
                 }
-                .scaleFactor(UIScreen.main.scale)
-                .fade(duration: 0.25)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 200)
-                .clipped()
-                .cornerRadius(12)
-        } else {
-            Image(placeholderImageName)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity)
-                .frame(height: 200)
-                .background(Color.gray.opacity(0.1))
-                .clipped()
-                .cornerRadius(12)
+            }
         }
+        .frame(height: 200)
+    }
+
+    @ViewBuilder
+    private func placeholderView(size: CGSize) -> some View {
+        Image(placeholderImageName)
+            .resizable()
+            .scaledToFill()
+            .frame(width: size.width, height: size.height)
+            .background(Color.gray.opacity(0.1))
+            .clipped()
+            .cornerRadius(12)
     }
 }
 

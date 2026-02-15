@@ -9,13 +9,25 @@ import SwiftUI
 
 struct PurchaseDetailView: View {
     let record: PurchaseRecord
-    @StateObject private var viewModel = PurchaseDetailViewModel()
+    @StateObject private var viewModel: PurchaseDetailViewModel
     @Environment(\.presentationMode) private var presentationMode
 
     @State private var showWithdrawConfirmation = false
     @State private var showWithdrawSuccess = false
     @State private var participantNamesForWithdraw = ""
     @State private var programNameForWithdraw = ""
+    private let eventIsInPast: Bool
+
+    init(record: PurchaseRecord) {
+        self.record = record
+        _viewModel = StateObject(wrappedValue: PurchaseDetailViewModel())
+        if let eventDate = record.eventDate {
+            let startOfToday = Calendar.current.startOfDay(for: Date())
+            self.eventIsInPast = eventDate < startOfToday
+        } else {
+            self.eventIsInPast = false
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -132,17 +144,11 @@ struct PurchaseDetailView: View {
         }
     }
 
-    private var isEventInPast: Bool {
-        guard let eventDate = record.eventDate else { return false }
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-        return eventDate < startOfToday
-    }
-
     private func shouldShowWithdrawButton(for detail: Participant) -> Bool {
         guard !["cancelled", "withdrawn", "rejected", "failed"].contains(detail.regStatus.lowercased()) else {
             return false
         }
-        return !isEventInPast
+        return !eventIsInPast
     }
 }
 
