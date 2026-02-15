@@ -13,6 +13,7 @@ struct EventProgram: Identifiable, Codable, Hashable {
     let name: String
     let time: String?
     let rulesAndGuidelines: String?
+    let rulesDescriptionHTML: String?
     let instructionsHTML: String?
     let refundPolicyHTML: String?
     let penaltyDetails: PenaltyDetails?
@@ -36,6 +37,7 @@ struct EventProgram: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, time, categories, event
         case rulesAndGuidelines = "rules_and_guidelines"
+        case rulesDescriptionHTML = "rules_desc"
         case instructionsHTML = "instructions_html"
         case refundPolicyHTML = "refund_policy_html"
         case penaltyDetails = "penalty_details"

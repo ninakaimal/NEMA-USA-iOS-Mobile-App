@@ -309,7 +309,7 @@ fileprivate struct EventProgramRowView: View {
     @State private var showingRulesSheet = false
 
     private var hasRulesContent: Bool {
-        let content = (program.rulesAndGuidelines ?? program.instructionsHTML ?? "")
+        let content = (program.rulesDescriptionHTML ?? program.rulesAndGuidelines ?? program.instructionsHTML ?? "")
         return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -388,7 +388,7 @@ fileprivate struct EventProgramRowView: View {
         .sheet(isPresented: $showingRulesSheet) {
             RulesGuidelinesSheetView(
                 title: program.name,
-                htmlContent: program.rulesAndGuidelines ?? program.instructionsHTML ?? "No rules available."
+                htmlContent: program.rulesDescriptionHTML ?? program.rulesAndGuidelines ?? program.instructionsHTML ?? "No rules available."
             )
         }
     }
