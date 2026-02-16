@@ -9,8 +9,12 @@ import SwiftUI
 
 struct MyEventsView: View {
     @StateObject private var viewModel = MyEventsViewModel()
+    @StateObject private var eventRepository = EventRepository()
     @State private var selectedRecord: PurchaseRecord?
     @State private var hasAppeared = false
+    @State private var searchQuery: String = ""
+    @State private var selectedCategory: String = "All"
+    @FocusState private var isSearchFocused: Bool
     
     var body: some View {
         NavigationView {
@@ -28,6 +32,11 @@ struct MyEventsView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             Spacer().frame(height: 16)
+                            
+                            if !viewModel.purchaseRecords.isEmpty {
+                                searchBar
+                                categoryChips
+                            }
                             
                             if viewModel.isLoading && viewModel.purchaseRecords.isEmpty {
                                 ProgressView("Loading your events...")
@@ -95,16 +104,46 @@ struct MyEventsView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 
                             } else {
-                                LazyVStack(spacing: 16) {
-                                    ForEach(viewModel.purchaseRecords) { record in
-                                        MyEventCard(record: record)
-                                            .onTapGesture {
-                                                guard selectedRecord == nil else { return }
-                                                selectedRecord = record
+                                if filteredRecords.isEmpty {
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "line.3.horizontal.decrease.circle")
+                                            .font(.system(size: 48))
+                                            .foregroundColor(.gray)
+                                        Text("No matching events")
+                                            .font(.title3)
+                                            .fontWeight(.semibold)
+                                        Text(hasActiveFilters ? "Try adjusting your search or category filters." : "No events match your filters right now.")
+                                            .multilineTextAlignment(.center)
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal)
+                                        if hasActiveFilters {
+                                            Button("Clear Filters") {
+                                                withAnimation {
+                                                    searchQuery = ""
+                                                    selectedCategory = "All"
+                                                }
                                             }
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 24)
+                                            .padding(.vertical, 10)
+                                            .background(Color.orange)
+                                            .cornerRadius(12)
+                                        }
                                     }
+                                    .padding()
+                                } else {
+                                    LazyVStack(spacing: 16) {
+                                        ForEach(filteredRecords) { record in
+                                            MyEventCard(record: record)
+                                                .onTapGesture {
+                                                    guard selectedRecord == nil else { return }
+                                                    selectedRecord = record
+                                                }
+                                        }
+                                    }
+                                    .padding(.horizontal)
                                 }
-                                .padding(.horizontal)
                                 
                                 if viewModel.isLoading && !viewModel.purchaseRecords.isEmpty {
                                     ProgressView("Refreshing...")
@@ -148,8 +187,117 @@ struct MyEventsView: View {
             viewModel.clearData()
             hasAppeared = false
         }
+        .task {
+            await eventRepository.loadEventsFromCoreData(fetchLimit: 100)
+        }
+        .onChange(of: viewModel.purchaseRecords) { _ in
+            if !availableCategories.contains(selectedCategory) {
+                selectedCategory = "All"
+            }
+        }
+        .onChange(of: eventRepository.events) { _ in
+            if !availableCategories.contains(selectedCategory) {
+                selectedCategory = "All"
+            }
+        }
     }
-}
+
+    private var availableCategories: [String] {
+        let derived = viewModel.purchaseRecords
+            .map { categoryLabel(for: $0) }
+            .filter { !$0.isEmpty }
+        let unique = Array(Set(derived)).sorted()
+        return ["All"] + unique
+    }
+    
+    private var filteredRecords: [PurchaseRecord] {
+        viewModel.purchaseRecords.filter { record in
+            matchesSearch(record) && matchesCategory(record)
+        }
+    }
+    
+    private var hasActiveFilters: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedCategory != "All"
+    }
+    
+    private var searchBar: some View {
+        HStack {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.gray)
+                TextField("Search my events…", text: $searchQuery)
+                    .focused($isSearchFocused)
+                    .disableAutocorrection(true)
+                if !searchQuery.isEmpty {
+                    Button { searchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: 25)
+                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            )
+            .padding(.horizontal)
+        }
+        .padding(.bottom, 4)
+    }
+    
+    private var categoryChips: some View {
+        Group {
+            if availableCategories.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(availableCategories, id: \.self) { cat in
+                            Button(cat) {
+                                withAnimation { selectedCategory = cat }
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 16)
+                            .background(selectedCategory == cat ? Color.orange : Color.white)
+                            .foregroundColor(selectedCategory == cat ? .white : .black)
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+    
+    private func matchesSearch(_ record: PurchaseRecord) -> Bool {
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return true }
+        return record.eventName.localizedCaseInsensitiveContains(trimmedQuery) ||
+            record.title.localizedCaseInsensitiveContains(trimmedQuery) ||
+            (record.subtitle?.localizedCaseInsensitiveContains(trimmedQuery) ?? false) ||
+            record.status.localizedCaseInsensitiveContains(trimmedQuery) ||
+            record.type.localizedCaseInsensitiveContains(trimmedQuery)
+    }
+    
+    private func matchesCategory(_ record: PurchaseRecord) -> Bool {
+        selectedCategory == "All" || categoryLabel(for: record) == selectedCategory
+    }
+    
+    private func categoryLabel(for record: PurchaseRecord) -> String {
+        if let eventId = record.eventId,
+           let eventCategory = eventRepository.events.first(where: { $0.id == eventId })?.categoryName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !eventCategory.isEmpty {
+            return eventCategory
+        }
+        let typeLower = record.type.lowercased()
+        if typeLower.contains("ticket") { return "Tickets" }
+        if typeLower.contains("program") { return "Programs" }
+        return record.type.isEmpty ? "Other" : record.type
+    }
 
 // MyEventCard remains the same
 struct MyEventCard: View {
