@@ -298,6 +298,7 @@ struct MyEventsView: View {
         if typeLower.contains("program") { return "Programs" }
         return record.type.isEmpty ? "Other" : record.type
     }
+}
 
 // MyEventCard remains the same
 struct MyEventCard: View {
