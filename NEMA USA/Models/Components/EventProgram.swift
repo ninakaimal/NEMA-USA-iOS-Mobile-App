@@ -119,13 +119,16 @@ struct PenaltyDetails: Codable, Hashable {
 }
 
 struct ProgramCategory: Identifiable, Codable, Hashable {
-    let id: Int
+    let id: Int                 // program_age_cats.id (ProgramCategories PK)
+    let ageCategoryId: Int?     // underlying age_category.id
     let name: String
     let minAge: Int?
     let maxAge: Int?
     
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id
+        case ageCategoryId = "age_category_id"
+        case name
         case minAge = "min_age"
         case maxAge = "max_age"
     }
