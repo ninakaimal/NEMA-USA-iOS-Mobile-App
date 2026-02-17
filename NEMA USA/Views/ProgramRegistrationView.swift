@@ -64,11 +64,15 @@ class ProgramRegistrationViewModel: ObservableObject {
         let perParticipant = perParticipantAmount(for: program, isMember: isMember)
         return perParticipant * Double(participantCount)
     }
+    
     func canSubmit(for program: EventProgram) -> Bool {
         guard hasAnyParticipantSelection && acceptedTerms else { return false }
         guard guestInputError == nil else { return false }
         if let locations = program.practiceLocations, !locations.isEmpty {
             guard selectedPracticeLocationId != nil else { return false }
+        }
+        if categoryStatus(for: program).errorMessage != nil {
+            return false
         }
         return true
     }
@@ -106,6 +110,88 @@ class ProgramRegistrationViewModel: ObservableObject {
         }
         
         return (true, nil)
+    }
+    
+    func categoryStatus(for program: EventProgram) -> (category: ProgramCategory?, errorMessage: String?) {
+        guard !program.categories.isEmpty else { return (nil, nil) }
+        if !hasAnyParticipantSelection { return (nil, nil) }
+        var resolvedCategory: ProgramCategory?
+        var mismatchedNames: [String] = []
+        var missingAgeNames: [String] = []
+        var outOfRangeNames: [String] = []
+        let categories = program.categories
+        
+        func processParticipant(name: String, age: Int?) {
+            guard let age else {
+                missingAgeNames.append(name)
+                return
+            }
+            guard let category = matchCategory(forAge: age, categories: categories) else {
+                outOfRangeNames.append(name)
+                return
+            }
+            if let current = resolvedCategory {
+                if current.id != category.id {
+                    mismatchedNames.append(name)
+                }
+            } else {
+                resolvedCategory = category
+            }
+        }
+        
+        for id in selectedParticipantIDs {
+            if let member = eligibleParticipants.first(where: { $0.id == id }) {
+                processParticipant(name: member.name, age: age(for: member))
+            }
+        }
+        
+        if let guest = guestPayload {
+            let guestName = (guest["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = guestName?.isEmpty == false ? guestName! : "Guest participant"
+            let guestAge = guest["age"] as? Int
+            processParticipant(name: label, age: guestAge)
+        }
+        
+        if !missingAgeNames.isEmpty {
+            let list = missingAgeNames.joined(separator: ", ")
+            return (resolvedCategory, "Add birthdates/ages for: \(list) so we can verify the category.")
+        }
+        
+        if !outOfRangeNames.isEmpty {
+            let list = outOfRangeNames.joined(separator: ", ")
+            return (resolvedCategory, "Selected ages do not match any category for: \(list).")
+        }
+        
+        if !mismatchedNames.isEmpty {
+            let list = mismatchedNames.joined(separator: ", ")
+            return (resolvedCategory, "All participants must be in the same age bracket. Remove or register separately for: \(list).")
+        }
+        
+        return (resolvedCategory, nil)
+    }
+    
+    private func age(for member: FamilyMember) -> Int? {
+        guard let dob = member.dob, !dob.isEmpty else { return nil }
+        let components = dob.split(separator: "-")
+        guard let year = Int(components.first ?? "") else { return nil }
+        let month = components.count > 1 ? Int(components[1]) ?? 1 : 1
+        var dateComponents = DateComponents()
+        dateComponents.year = year
+        dateComponents.month = month
+        let calendar = Calendar.current
+        guard let birthDate = calendar.date(from: dateComponents) else { return nil }
+        let now = Date()
+        return calendar.dateComponents([.year], from: birthDate, to: now).year
+    }
+    
+    private func matchCategory(forAge age: Int, categories: [ProgramCategory]) -> ProgramCategory? {
+        guard !categories.isEmpty else { return nil }
+        for category in categories {
+            let minOk = category.minAge.map { age >= $0 } ?? true
+            let maxOk = category.maxAge.map { age <= $0 } ?? true
+            if minOk && maxOk { return category }
+        }
+        return nil
     }
 
     func loadData(for programId: String) async {
@@ -423,6 +509,7 @@ struct ProgramRegistrationView: View {
                     
                     // Participant Selection
                     Section(header: Text("Select Participants")) {
+                        let categoryStatus = viewModel.categoryStatus(for: program)
                         if viewModel.isLoading && !isRefreshing {
                             ProgressView()
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -474,6 +561,17 @@ struct ProgramRegistrationView: View {
                                         viewModel.selectedParticipantIDs.insert(member.id)
                                     }
                                 }
+                            }
+                            if let message = categoryStatus.errorMessage {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.top, 6)
+                            } else if let category = categoryStatus.category, viewModel.hasAnyParticipantSelection {
+                                Text("All selected participants fall under \(category.name).")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 6)
                             }
                         }
                     }
@@ -626,6 +724,12 @@ struct ProgramRegistrationView: View {
                                 
                                 if let locations = program.practiceLocations, !locations.isEmpty, viewModel.selectedPracticeLocationId == nil {
                                     Text("• Choose a practice location")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                }
+                                
+                                if let categoryMessage = viewModel.categoryStatus(for: program).errorMessage {
+                                    Text("• \(categoryMessage)")
                                         .font(.caption2)
                                         .foregroundColor(.orange)
                                 }
