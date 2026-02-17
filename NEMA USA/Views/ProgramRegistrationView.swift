@@ -240,6 +240,8 @@ class ProgramRegistrationViewModel: ObservableObject {
             return
         }
         
+        let categoryId = categoryStatus(for: program).category?.id
+        
         await MainActor.run {
             isLoading = true
             errorMessage = nil
@@ -250,13 +252,15 @@ class ProgramRegistrationViewModel: ObservableObject {
             print("  participants: \(Array(selectedParticipantIDs))")
             print("  guest: \(String(describing: guestPayload))")
             print("  practiceLocationId: \(String(describing: selectedPracticeLocationId))")
+            print("  programCategoryId: \(String(describing: categoryId))")
             try await networkManager.registerForProgram(
                 eventId: eventId,
                 programId: program.id,
                 participantIds: Array(selectedParticipantIDs),
                 practiceLocationId: selectedPracticeLocationId,
                 comments: comments,
-                guestParticipant: guestPayload
+                guestParticipant: guestPayload,
+                programCategoryId: categoryId
             )
             await MainActor.run {
                 self.registrationSuccess = true
@@ -299,6 +303,8 @@ class ProgramRegistrationViewModel: ObservableObject {
             showPaymentError = true
             return
         }
+        
+        let categoryId = categoryStatus(for: program).category?.id
         
         guard let currentUser = DatabaseManager.shared.currentUser else {
             paymentErrorMessage = "User authentication required for payment. Please log out and log back in."
@@ -348,7 +354,8 @@ class ProgramRegistrationViewModel: ObservableObject {
             panthiId: nil,
             lineItems: nil,
             participantIds: Array(selectedParticipantIDs),
-            guestParticipant: guestPayload
+            guestParticipant: guestPayload,
+            programCategoryId: categoryId
         ) { result in
             DispatchQueue.main.async {
                 self.isProcessingPayment = false

@@ -99,6 +99,7 @@ final class PaymentManager: NSObject {
         paymentTypeOverride: String? = nil,
         groupParticipantId: Int? = nil,
         groupProgramId: Int? = nil,
+        programCategoryId: Int? = nil,
         completion: @escaping (Result<URL?, PaymentError>) -> Void
     ){
         fetchInitialCookies { success in
@@ -184,6 +185,9 @@ final class PaymentManager: NSObject {
                 }
                 if let guest = guestParticipant {
                     payload["guest_participant"] = guest
+                }
+                if let programCategoryId = programCategoryId {
+                    payload["program_category_id"] = programCategoryId
                 }
 
             case "group":

@@ -1790,7 +1790,7 @@ final class NetworkManager: NSObject {
         }
     }
     
-    func registerForProgram(eventId: String, programId: String, participantIds: [Int], practiceLocationId: Int? = nil, comments: String, guestParticipant: [String: Any]? = nil) async throws {
+    func registerForProgram(eventId: String, programId: String, participantIds: [Int], practiceLocationId: Int? = nil, comments: String, guestParticipant: [String: Any]? = nil, programCategoryId: Int? = nil) async throws {
         guard let jwt = DatabaseManager.shared.jwtApiToken else {
             throw NetworkError.serverError("User not authenticated.")
         }
@@ -1814,6 +1814,10 @@ final class NetworkManager: NSObject {
         // Include practice location if provided
         if let locationId = practiceLocationId {
             body["practice_location_id"] = locationId
+        }
+        
+        if let programCategoryId = programCategoryId {
+            body["program_category_id"] = programCategoryId
         }
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
