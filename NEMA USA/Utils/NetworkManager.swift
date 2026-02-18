@@ -1066,16 +1066,17 @@ final class NetworkManager: NSObject {
     // 1. Fetch Events
     func fetchEvents(since: Date?) async throws -> (events: [Event], deletedEventIds: [String]) {
         var urlComponents = URLComponents(url: eventsApiBaseURL.appendingPathComponent("events"), resolvingAgainstBaseURL: false)!
-        var queryItems: [URLQueryItem] = []
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "include_children", value: "true"),
+            URLQueryItem(name: "limit", value: "250")
+        ]
 
         if let sinceDate = since {
             queryItems.append(URLQueryItem(name: "since", value: NetworkManager.iso8601DateTimeFormatter.string(from: sinceDate)))
         }
         // Add 'deleted_since' parameter handling here if your backend supports it for deleted IDs
 
-        if !queryItems.isEmpty {
-            urlComponents.queryItems = queryItems
-        }
+        urlComponents.queryItems = queryItems
 
         guard let url = urlComponents.url else {
             print("❌ [NetworkManager] fetchEvents: Bad URL components.")

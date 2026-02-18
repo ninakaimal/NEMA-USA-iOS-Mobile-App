@@ -13,6 +13,7 @@
         <attribute name="isTktON" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastUpdatedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="parentEventId" optional="YES" attributeType="String"/>
         <attribute name="plainDescription" optional="YES" attributeType="String"/>
         <attribute name="regClosed" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="showBuyTickets" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>

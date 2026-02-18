@@ -19,15 +19,18 @@ struct DashboardView: View {
     @State private var currentSponsor = 0
     private let sponsorTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
+    private var dashboardEvents: [Event] {
+        eventRepository.events.filter { $0.parentEventId == nil }
+    }
+
     var categories: [String] {
-        // Now uses eventRepository.events
-        let nonOptionalCats = eventRepository.events.compactMap { $0.categoryName }
+        let nonOptionalCats = dashboardEvents.compactMap { $0.categoryName }
         let uniqueSortedCats = Set(nonOptionalCats).sorted()
         return ["All"] + uniqueSortedCats
     }
 
     var filteredEvents: [Event] {
-        eventRepository.events.filter { ev in
+        dashboardEvents.filter { ev in
             let matchesSearch = searchQuery.isEmpty
                 || ev.title.localizedCaseInsensitiveContains(searchQuery)
                 // Use optional chaining and nil-coalescing for optional description and location

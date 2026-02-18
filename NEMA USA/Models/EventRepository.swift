@@ -68,6 +68,7 @@ class EventRepository: ObservableObject {
                     cdEvent.location = eventData.location
                     cdEvent.categoryName = eventData.categoryName
                     cdEvent.eventCatId = eventData.eventCatId.map { Int32($0) } ?? 0
+                    cdEvent.parentEventId = eventData.parentEventId
                     cdEvent.imageUrl = eventData.imageUrl
                     // cdEvent.isTBD removed
                     cdEvent.isRegON = eventData.isRegON ?? false
@@ -461,6 +462,7 @@ class EventRepository: ObservableObject {
                     location: cdEvent.location ?? "To be Announced",
                     categoryName: cdEvent.categoryName,
                     eventCatId: (cdEvent.eventCatId == 0 && cdEvent.categoryName == nil) ? nil : Int(cdEvent.eventCatId), // If 0 and no name implies nil
+                    parentEventId: cdEvent.parentEventId,
                     imageUrl: cdEvent.imageUrl,
                     isRegON: cdEvent.isRegON,
                     isTktON: cdEvent.isTktON,

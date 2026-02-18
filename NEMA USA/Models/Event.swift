@@ -16,6 +16,7 @@ struct Event: Identifiable, Codable, Hashable {
     let location: String?
     let categoryName: String?
     let eventCatId: Int?
+    let parentEventId: String?
     let imageUrl: String?
     let isRegON: Bool?
     let isTktON: Bool?
@@ -34,6 +35,7 @@ struct Event: Identifiable, Codable, Hashable {
         case htmlDescription = "html_description"
         case categoryName = "category_name"
         case eventCatId = "event_cat_id"
+        case parentEventId = "parent_event_id"
         case imageUrl = "image_url"
         case isRegON = "is_reg_on"
         case isTktON = "is_tkt_on"
@@ -58,6 +60,7 @@ struct Event: Identifiable, Codable, Hashable {
         location = try container.decodeIfPresent(String.self, forKey: .location)
         categoryName = try container.decodeIfPresent(String.self, forKey: .categoryName)
         eventCatId = try container.decodeIfPresent(Int.self, forKey: .eventCatId)
+        parentEventId = try container.decodeIfPresent(String.self, forKey: .parentEventId)
         imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
         eventLink = try container.decodeIfPresent(String.self, forKey: .eventLink)
 
@@ -104,7 +107,7 @@ struct Event: Identifiable, Codable, Hashable {
 
     // Memberwise initializer (keep for manual creation / CoreData mapping)
     init(id: String, title: String, plainDescription: String?, htmlDescription: String?, location: String?,
-         categoryName: String?, eventCatId: Int?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, isRegWaitlist: Bool?, showBuyTickets: Bool?, date: Date?, timeString: String?, eventLink: String?,
+         categoryName: String?, eventCatId: Int?, parentEventId: String?, imageUrl: String?, isRegON: Bool?, isTktON: Bool?, isRegWaitlist: Bool?, showBuyTickets: Bool?, date: Date?, timeString: String?, eventLink: String?,
          usesPanthi: Bool?, lastUpdatedAt: Date?) {
         self.id = id
         self.title = title
@@ -113,6 +116,7 @@ struct Event: Identifiable, Codable, Hashable {
         self.location = location
         self.categoryName = categoryName
         self.eventCatId = eventCatId
+        self.parentEventId = parentEventId
         self.imageUrl = imageUrl
         self.isRegON = isRegON
         self.isTktON = isTktON
@@ -125,3 +129,4 @@ struct Event: Identifiable, Codable, Hashable {
         self.lastUpdatedAt = lastUpdatedAt
     }
 }
+
