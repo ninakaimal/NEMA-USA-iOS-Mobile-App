@@ -428,11 +428,25 @@ class EventRepository: ObservableObject {
     
     // --- Method to load events from Core Data and publish them ---
     @MainActor
-    func loadEventsFromCoreData(fetchLimit: Int = 30) async { // Add a parameter with a default
+    func loadEventsFromCoreData(fetchLimit: Int? = nil, startDate: Date? = nil, endDate: Date? = nil) async {
         let request: NSFetchRequest<CDEvent> = CDEvent.fetchRequest()
         // Sort by date descending to get the latest events
         request.sortDescriptors = [NSSortDescriptor(keyPath: \CDEvent.date, ascending: false)]
-        request.fetchLimit = fetchLimit // Apply the limit
+
+        var predicates: [NSPredicate] = []
+        if let startDate = startDate {
+            predicates.append(NSPredicate(format: "date >= %@", startDate as NSDate))
+        }
+        if let endDate = endDate {
+            predicates.append(NSPredicate(format: "date <= %@", endDate as NSDate))
+        }
+        if !predicates.isEmpty {
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+        }
+
+        if let fetchLimit = fetchLimit, fetchLimit > 0 {
+            request.fetchLimit = fetchLimit
+        }
         
         do {
             let cdEvents = try viewContext.fetch(request)
@@ -459,10 +473,22 @@ class EventRepository: ObservableObject {
                     lastUpdatedAt: cdEvent.lastUpdatedAt ?? Date() // Provide a default if lastUpdatedAt is optional in CD (it shouldn't be)
                 )
             }
-            print("✅ [EventRepository] Loaded a max of \(fetchLimit) events (found \(cdEvents.count)) from Core Data.")
+            if let fetchLimit = fetchLimit, fetchLimit > 0 {
+                print("✅ [EventRepository] Loaded a max of \(fetchLimit) events (found \(cdEvents.count)) from Core Data.")
+            } else {
+                print("✅ [EventRepository] Loaded \(cdEvents.count) events from Core Data (no fetch limit).")
+            }
         } catch {
             print("❌ [EventRepository] Failed to fetch events from Core Data: \(error.localizedDescription)")
             lastSyncErrorMessage = "Failed to load local events."
         }
+    }
+    
+    @MainActor
+    func loadEventsForCalendar(pastMonths: Int = 12, futureMonths: Int = 12) async {
+        let calendar = Calendar.current
+        let startDate = calendar.date(byAdding: .month, value: -abs(pastMonths), to: Date())
+        let endDate = calendar.date(byAdding: .month, value: abs(futureMonths), to: Date())
+        await loadEventsFromCoreData(fetchLimit: nil, startDate: startDate, endDate: endDate)
     }
 }  // End of File

@@ -54,6 +54,7 @@ struct CalendarView: View {
                 .refreshable {
                     print("[CalendarView] Refresh action triggered.")
                     await eventRepository.syncAllEvents(forceFullSync: true)
+                    await eventRepository.loadEventsForCalendar()
                 }
             }
             .navigationTitle("Events Calendar")
@@ -63,11 +64,12 @@ struct CalendarView: View {
         // 4. Add .task modifier for initial data load and sync
         .task {
             if eventRepository.events.isEmpty {
-                print("[CalendarView] Initial appearance: Loading events from Core Data then syncing.")
-                await eventRepository.loadEventsFromCoreData()
+                print("[CalendarView] Initial appearance: Loading events for calendar window then syncing.")
+                await eventRepository.loadEventsForCalendar()
                 await eventRepository.syncAllEvents()
             } else {
-                print("[CalendarView] Appeared with existing events, triggering background sync.")
+                print("[CalendarView] Appeared with existing events, refreshing calendar window and syncing.")
+                await eventRepository.loadEventsForCalendar()
                 await eventRepository.syncAllEvents(forceFullSync: false)
             }
         }
