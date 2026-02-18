@@ -230,11 +230,15 @@ struct DashboardView: View {
             if eventRepository.events.isEmpty {
                 print("[DashboardView] Initial appearance: Loading events from Core Data then syncing.")
                 await eventRepository.loadEventsFromCoreData(fetchLimit: 30) // Load from local store first with fetch limit
-                await eventRepository.syncAllEvents(forceFullSync: true) // True because Core Data was empty
+                Task.detached { [eventRepository] in
+                    await eventRepository.syncAllEvents(forceFullSync: true) // True because Core Data was empty
+                }
             } else {
                 print("[DashboardView] Appeared with existing events, loading from Core Data then triggering background sync.")
                 await eventRepository.loadEventsFromCoreData(fetchLimit: 30) // Still load a limited set for UI
-                await eventRepository.syncAllEvents(forceFullSync: false) // Delta sync
+                Task.detached { [eventRepository] in
+                    await eventRepository.syncAllEvents(forceFullSync: false) // Delta sync
+                }
             }
             print("[DashboardView] .task: Initial setup complete. Events count: \(eventRepository.events.count)")
         }

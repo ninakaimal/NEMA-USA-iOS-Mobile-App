@@ -66,11 +66,15 @@ struct CalendarView: View {
             if eventRepository.events.isEmpty {
                 print("[CalendarView] Initial appearance: Loading events for calendar window then syncing.")
                 await eventRepository.loadEventsForCalendar()
-                await eventRepository.syncAllEvents()
+                Task.detached { [eventRepository] in
+                    await eventRepository.syncAllEvents()
+                }
             } else {
                 print("[CalendarView] Appeared with existing events, refreshing calendar window and syncing.")
                 await eventRepository.loadEventsForCalendar()
-                await eventRepository.syncAllEvents(forceFullSync: false)
+                Task.detached { [eventRepository] in
+                    await eventRepository.syncAllEvents(forceFullSync: false)
+                }
             }
         }
     }
